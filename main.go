@@ -140,6 +140,7 @@ func main() {
 
 	f.DisablePoliteness = true
 	f.WorkerIdleTTL = 5 * time.Second
+	f.AutoClose = true
 
 	// Start processing
 	q := f.Start()
