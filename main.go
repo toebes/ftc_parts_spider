@@ -30,7 +30,7 @@ type downloadent struct {
 }
 type downloadentmap map[string]downloadent
 
-var (S
+var (
 	// Protect access to tables
 	mu sync.Mutex
 	// Duplicates table
