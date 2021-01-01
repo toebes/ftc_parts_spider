@@ -42,10 +42,11 @@ var (
 
 	// Google Sheets JSON URLS:
 	//   Rev Robotics:  https://spreadsheets.google.com/feeds/cells/19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0/2/public/full?alt=json
-	//   ServoCity
+	//   ServoCity:     https://spreadsheets.google.com/feeds/cells/15Mm-Thdcpl5fVPs3vnyFUXWthuaV1tacXPJ7xQuoB8A/2/public/full?alt=json
 	//   GoBILDA:       https://spreadsheets.google.com/feeds/cells/15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM/2/public/full?alt=json
-	//   AndyMark
-	//   Pitsco
+	//   AndyMark:      https://spreadsheets.google.com/feeds/cells/1x4SUwNaQ_X687yA6kxPELoe7ZpoCKnnCq1-OsgxUCOw/2/public/full?alt=json
+	//   Pitsco:        https://spreadsheets.google.com/feeds/cells/1adykd3BVYUyXsb3vC2A-lNhFNj_Q8Yzd1oXThmSwPio/2/public/full?alt=json
+	//
 	presets = []string{
 		"https://www.gobilda.com/structure/",
 		"https://www.gobilda.com/motion/",
