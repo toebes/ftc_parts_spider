@@ -30,7 +30,7 @@ type downloadent struct {
 }
 type downloadentmap map[string]downloadent
 
-var (
+var (S
 	// Protect access to tables
 	mu sync.Mutex
 	// Duplicates table
@@ -40,6 +40,12 @@ var (
 	lastcategory = ""
 	linenum      = 1
 
+	// Google Sheets JSON URLS:
+	//   Rev Robotics:  https://spreadsheets.google.com/feeds/cells/19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0/2/public/full?alt=json
+	//   ServoCity
+	//   GoBILDA:       https://spreadsheets.google.com/feeds/cells/15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM/2/public/full?alt=json
+	//   AndyMark
+	//   Pitsco
 	presets = []string{
 		"https://www.gobilda.com/structure/",
 		"https://www.gobilda.com/motion/",
