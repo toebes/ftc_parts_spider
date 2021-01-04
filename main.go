@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -16,6 +18,23 @@ import (
 
 	"github.com/PuerkitoBio/fetchbot"
 	"github.com/PuerkitoBio/goquery"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
+	"gopkg.in/Iwark/spreadsheet.v2"
+)
+
+// ReferenceData - colletion of part numbers and urls
+type ReferenceData struct {
+	mu         sync.Mutex
+	sheet      *spreadsheet.Sheet
+	partNumber map[string][]spreadsheet.Cell
+	url        map[string][]spreadsheet.Cell
+}
+
+var (
+	nameColumnIndex       uint = 2
+	partNumberColumnIndex uint = 3
+	urlColumnIndex        uint = 5
 )
 
 type category struct {
@@ -31,6 +50,9 @@ type downloadent struct {
 type downloadentmap map[string]downloadent
 
 var (
+	// Gobilda Spreadsheet of parts and thier status
+	referenceData ReferenceData
+
 	// Protect access to tables
 	mu sync.Mutex
 	// Duplicates table
@@ -61,22 +83,24 @@ var (
 		// "https://www.servocity.com/kits/",
 	}
 	// Command-line flags
-	// seed = flag.String("seed", "https://www.servocity.com/1-50-aluminum-channel/", "seed URL") // Servos
+	// seed = flag.String("seed", "https://www.gobilda.com/nimh-battery-6v-2700mah-2-pos-tjc8-power-connector-mh-fc-6-1/", "seed URL") // Servos
 	seed = flag.String("seed", "https://www.gobilda.com/structure/", "seed URL") // Servos
 	// seed = flag.String("seed", "https://www.servocity.com/electronics/", "seed URL") // Servos
 
-	cancelAfter = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
-	cancelAtURL = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
-	stopAfter   = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
-	stopAtURL   = flag.String("stopat", "", "automatically stop the fetchbot at a given URL")
-	memStats    = flag.Duration("memstats", 0, "display memory statistics at a given interval")
-	fileout     = flag.String("out", "file.txt", "Output File")
-
-	outfile *os.File
+	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
+	cancelAtURL   = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
+	stopAfter     = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
+	stopAtURL     = flag.String("stopat", "", "automatically stop the fetchbot at a given URL")
+	memStats      = flag.Duration("memstats", 0, "display memory statistics at a given interval")
+	fileout       = flag.String("out", "file.txt", "Output File")
+	spreadsheetID = flag.String("spreadsheet", "15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM", "spider this spreadsheet")
+	outfile       *os.File
 )
 
 func main() {
 	flag.Parse()
+
+	referenceData = LoadGoBilldaSpreedSheet(*spreadsheetID)
 
 	// Parse the provided seed
 	u, err := url.Parse(*seed)
@@ -176,6 +200,16 @@ func main() {
 	}
 	preloadQueueURL(q, *seed, "Home > Competition > FTC")
 	q.Block()
+
+	for _, entry := range referenceData.partNumber {
+		fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v\n", linenum, "MIA in Crawl", "",
+			entry[nameColumnIndex].Value, entry[partNumberColumnIndex].Value,
+			entry[nameColumnIndex].Value+" "+entry[partNumberColumnIndex].Value,
+			entry[urlColumnIndex].Value,
+			"",
+			"")
+		linenum++
+	}
 }
 
 func preloadQueueURL(q *fetchbot.Queue, URL string, breadcrumb string) {
@@ -429,11 +463,42 @@ func outputCategory(breadcrumbs string, trimlast bool) {
 	}
 }
 
+func matched(sku string, url string) (matched bool, matchType string) {
+
+	matchType = "No Match"
+
+	if entry, ok := referenceData.partNumber[sku]; ok {
+		matchType = "SKU Match"
+
+		referenceData.mu.Lock()
+		delete(referenceData.url, entry[urlColumnIndex].Value)
+		delete(referenceData.partNumber, sku)
+		referenceData.mu.Unlock()
+
+	} else {
+		if _, ok := referenceData.url[url]; ok {
+			matchType = "URL Match"
+
+			referenceData.mu.Lock()
+			delete(referenceData.url, url)
+			delete(referenceData.partNumber, entry[partNumberColumnIndex].Value)
+			referenceData.mu.Unlock()
+		}
+	}
+	return matched, matchType
+}
+
 // --------------------------------------------------------------------------------------------
 // outputProduct generates the product line for the output file and also prints a status message on stdout
 func outputProduct(name string, sku string, url string, downloadurl string, extra string) {
-	fmt.Printf("|SKU: '%v' Product: '%v' Model:'%v' Extra: '%v' on page '%v'\n", sku, name, downloadurl, extra, url)
-	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v\n", linenum, lastcategory, name, sku, name+" "+sku, url, downloadurl, extra)
+
+	matched, matchType := matched(sku, url)
+
+	if !matched {
+		fmt.Printf("%s |SKU: '%v' Product: '%v' Model:'%v' Extra: '%v' on page '%v'\n", matchType, sku, name, downloadurl, extra, url)
+	}
+
+	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v\n", linenum, matchType, lastcategory, name, sku, name+" "+sku, url, downloadurl, extra)
 	linenum++
 }
 
@@ -1043,4 +1108,127 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 		outputError("Unable to process: %s\n", url)
 	}
 	mu.Unlock()
+}
+
+// Retrieve a token, saves the token, then returns the generated client.
+func getClient(config *oauth2.Config) *http.Client {
+	// The file token.json stores the user's access and refresh tokens, and is
+	// created automatically when the authorization flow completes for the first
+	// time.
+	tokFile := "token.json"
+	tok, err := tokenFromFile(tokFile)
+	if err != nil {
+		tok = getTokenFromWeb(config)
+		saveToken(tokFile, tok)
+	}
+	return config.Client(context.Background(), tok)
+}
+
+// Request a token from the web, then returns the retrieved token.
+func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
+	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	fmt.Printf("Go to the following link in your browser then type the "+
+		"authorization code: \n%v\n", authURL)
+
+	var authCode string
+	if _, err := fmt.Scan(&authCode); err != nil {
+		log.Fatalf("Unable to read authorization code: %v", err)
+	}
+
+	tok, err := config.Exchange(context.TODO(), authCode)
+	if err != nil {
+		log.Fatalf("Unable to retrieve token from web: %v", err)
+	}
+	return tok
+}
+
+// Retrieves a token from a local file.
+func tokenFromFile(file string) (*oauth2.Token, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	tok := &oauth2.Token{}
+	err = json.NewDecoder(f).Decode(tok)
+	return tok, err
+}
+
+// Saves a token to a file path.
+func saveToken(path string, token *oauth2.Token) {
+	fmt.Printf("Saving credential file to: %s\n", path)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		log.Fatalf("Unable to cache oauth token: %v", err)
+	}
+	defer f.Close()
+	json.NewEncoder(f).Encode(token)
+}
+
+func checkError(err error) {
+	if err != nil {
+		panic(err.Error())
+	}
+}
+
+// LoadGoBilldaSpreedSheet -
+// Get Part# and URL from gobilda ALL spreadsheet:
+// https://docs.google.com/spreadsheets/d/15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM/edit
+func LoadGoBilldaSpreedSheet(spreadsheetID string) ReferenceData {
+
+	b, err := ioutil.ReadFile("credentials.json")
+	if err != nil {
+		log.Fatalf("Unable to read client secret file: %v", err)
+	}
+
+	// If modifying these scopes, delete your previously saved token.json.
+	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets.readonly")
+	if err != nil {
+		log.Fatalf("Unable to parse client secret file to config: %v", err)
+	}
+	client := getClient(config)
+
+	service := spreadsheet.NewServiceWithClient(client)
+	sheets, err := service.FetchSpreadsheet(spreadsheetID)
+	checkError(err)
+
+	var referenceData = new(ReferenceData)
+	referenceData.partNumber = make(map[string][]spreadsheet.Cell)
+	referenceData.url = make(map[string][]spreadsheet.Cell)
+	referenceData.sheet, err = sheets.SheetByTitle("All")
+	checkError(err)
+
+	for ii, row := range referenceData.sheet.Rows {
+		if ii == 0 {
+			continue // header row
+		}
+		if excludeFromMatch(row) {
+			continue
+		}
+
+		if dup, ok := referenceData.partNumber[row[partNumberColumnIndex].Value]; ok {
+			fmt.Printf("row %d: duplicate part number '%s' found (original row %d)\n", ii, row[partNumberColumnIndex].Value, dup[partNumberColumnIndex].Row)
+		} else {
+			referenceData.partNumber[row[partNumberColumnIndex].Value] = row
+		}
+
+		if uint(len(row)) > partNumberColumnIndex {
+			referenceData.url[row[urlColumnIndex].Value] = row
+		}
+	}
+
+	return *referenceData
+}
+
+func excludeFromMatch(row []spreadsheet.Cell) bool {
+	if strings.HasPrefix(row[nameColumnIndex].Value, "--") {
+		return true
+	}
+	if strings.HasPrefix(row[partNumberColumnIndex].Value, "(Configurable)") {
+		return true
+	}
+	if strings.HasPrefix(row[partNumberColumnIndex].Value, "(??") {
+		return true
+	}
+	return false
 }
