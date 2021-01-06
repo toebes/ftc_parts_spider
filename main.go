@@ -23,7 +23,28 @@ import (
 	"gopkg.in/Iwark/spreadsheet.v2"
 )
 
-// ReferenceData - colletion of part numbers and urls
+// PartData collects all the information about an individual part.
+// It is read in from the spreadsheet and updated by the spider
+type PartData struct {
+	Order   uint   // General output order for sorting the spreadsheet
+	Section string // The path where the part occurs
+	Name    string // Name of the model file
+	SKU     string // Part number/SKU
+	// CombinedName string   // This really doesn't need to be stored as it is created by concatenating Name and SKU
+	URL          string    // URL on the vendor website for the part
+	ModelURL     string    // URL on the vendor website for any 3d model
+	Extra        [7]string // Extra items associated with the part
+	OnshapeURL   string    // Location of the Onshape model
+	Status       string    // Status of the Onshape model (Done, Bundle, etc)
+	SpiderStatus string    // Status from the latest spidering.  Possible values are
+	//                            New            SKU was found on website but was not in the spreadsheet
+	//                            NotFound       SKU from spreadsheet was not found on the website
+	//                            Changed        SKU was found on website but some data didn't match.  The Notes field indicates what has changed
+	//                            Discontinued   SKU was identified as discontinued
+	Notes string // Any general information about the part
+}
+
+// ReferenceData - collection of part numbers and urls
 type ReferenceData struct {
 	mu         sync.Mutex
 	sheet      *spreadsheet.Sheet
@@ -51,7 +72,7 @@ type downloadentmap map[string]downloadent
 
 var (
 	// Gobilda Spreadsheet of parts and thier status
-	referenceData ReferenceData
+	referenceData *ReferenceData
 
 	// Protect access to tables
 	mu sync.Mutex
@@ -70,11 +91,11 @@ var (
 	//   Pitsco:        https://spreadsheets.google.com/feeds/cells/1adykd3BVYUyXsb3vC2A-lNhFNj_Q8Yzd1oXThmSwPio/2/public/full?alt=json
 	//
 	presets = []string{
-		"https://www.gobilda.com/structure/",
-		"https://www.gobilda.com/motion/",
-		"https://www.gobilda.com/electronics/",
-		"https://www.gobilda.com/hardware/",
-		"https://www.gobilda.com/kits/",
+		// "https://www.gobilda.com/structure/",
+		// "https://www.gobilda.com/motion/",
+		// "https://www.gobilda.com/electronics/",
+		// "https://www.gobilda.com/hardware/",
+		// "https://www.gobilda.com/kits/",
 
 		// "https://www.servocity.com/structure/",
 		// "https://www.servocity.com/motion/",
@@ -83,8 +104,8 @@ var (
 		// "https://www.servocity.com/kits/",
 	}
 	// Command-line flags
-	// seed = flag.String("seed", "https://www.gobilda.com/nimh-battery-6v-2700mah-2-pos-tjc8-power-connector-mh-fc-6-1/", "seed URL") // Servos
-	seed = flag.String("seed", "https://www.gobilda.com/structure/", "seed URL") // Servos
+	seed = flag.String("seed", "https://www.gobilda.com/aluminum-rex-shafting/", "seed URL") // Servos
+	// seed = flag.String("seed", "https://www.gobilda.com/structure/", "seed URL") // Servos
 	// seed = flag.String("seed", "https://www.servocity.com/electronics/", "seed URL") // Servos
 
 	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
@@ -100,7 +121,7 @@ var (
 func main() {
 	flag.Parse()
 
-	referenceData = LoadGoBilldaSpreedSheet(*spreadsheetID)
+	referenceData = LoadStatusSpreadsheet(*spreadsheetID)
 
 	// Parse the provided seed
 	u, err := url.Parse(*seed)
@@ -441,7 +462,8 @@ func processSubCategory(ctx *fetchbot.Context, breadcrumbs string, categoryprodu
 // outputHeader generates the first line of the output file with the column headers
 // Note that we use ` to separate columns because we sometimes see tabs in the names
 func outputHeader() {
-	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n", "Order", "Section", "Name", "Part #", "Combined Name", "URL", "Model URL", "", "Extra 1", "Extra2", "Extra 3", "Extra 4", "Extra 5", "Extra 6", "Extra 7", "Onshape URL", "Model Status", "Notes")
+	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
+		"Order", "Section", "Name", "Part #", "Combined Name", "URL", "Model URL", "", "Extra 1", "Extra 2", "Extra 3", "Extra 4", "Extra 5", "Extra 6", "Extra 7", "Onshape URL", "Model Status", "Spider Status", "Notes")
 }
 
 // --------------------------------------------------------------------------------------------
@@ -499,6 +521,10 @@ func outputProduct(name string, sku string, url string, downloadurl string, extr
 	}
 
 	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v\n", linenum, matchType, lastcategory, name, sku, name+" "+sku, url, downloadurl, extra)
+
+	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
+
+		linenum, lastcategory, name, sku, name+" "+sku, url, downloadurl, "", extra, "", "", "", "", "", "", "Onshape URL", "Model Status", matchType, "Notes")
 	linenum++
 }
 
@@ -635,6 +661,7 @@ func showUnusedURLS(ctx *fetchbot.Context, url string, downloadurls downloadentm
 				strings.Index(key, "Pattern Information") < 0 &&
 				strings.Index(key, "bldc_hsr_") < 0 &&
 				strings.Index(key, "595644_assembly") < 0 &&
+				strings.Index(key, "Hardware Accessory Pack") < 0 &&
 				strings.Index(key, "Use Parameter") < 0 {
 
 				outputError("Unused download``%s``%s`%s\n", key, url, element.url)
@@ -652,7 +679,7 @@ func processProductGrid(ctx *fetchbot.Context, breadcrumbs string, url string, p
 		pg.Find("li.product a[data-card-type],li.product a.card").Each(func(i int, a *goquery.Selection) {
 			urlloc, _ := a.Attr("href")
 			product, _ := a.Attr("title")
-			// fmt.Printf("**ProductGrid Found item name=%s url=%s\n", product, urlloc)
+			fmt.Printf("**ProductGrid Found item name=%v url=%v on %v\n", product, urlloc, url)
 			found = true
 			enqueURL(ctx, urlloc, makeBreadCrumb(breadcrumbs, product))
 		})
@@ -684,13 +711,14 @@ func processLazyLoad(ctx *fetchbot.Context, breadcrumbs string, url string, js *
 	jstext := js.Text()
 	pos := strings.Index(jstext, "window.stencilBootstrap(")
 	if pos > 0 {
-		pos := strings.Index(jstext, "subcategoryURLs")
+		// fmt.Printf("Found Bootstrap: %v", jstext)
+		pos := strings.Index(jstext, "subcategories")
 		if pos > 0 {
 			jstext = jstext[pos:]
 			pos = strings.Index(jstext, ":[")
 			if pos > 0 {
 				pos2 := strings.Index(jstext, "],")
-				fmt.Printf("Found Javascript pos=%d pos2=%d '%s'\n", pos, pos2, jstext[pos:pos2])
+				// fmt.Printf("Found Javascript pos=%d pos2=%d '%s'\n", pos, pos2, jstext[pos:pos2])
 				if pos2 > 0 {
 					// //         <script>
 					// // Exported in app.js
@@ -705,11 +733,18 @@ func processLazyLoad(ctx *fetchbot.Context, breadcrumbs string, url string, js *
 					// </script>
 					jstext = strings.ReplaceAll(jstext[pos+2:pos2], "\\\"", "\"")
 					urlset := strings.Split(jstext, ",")
-					fmt.Printf("Result: %v\n", urlset)
 					for _, url := range urlset {
-						url = strings.Trim(url, "\"")
-						found = true
-						enqueURL(ctx, url, breadcrumbs)
+						pos3 := strings.Index(url, "\"url\":\"")
+						if pos3 >= 0 {
+							urlpart := url[pos3+7:]
+							pos4 := strings.Index(urlpart, "\"")
+							if pos4 > 0 {
+								urlpart = urlpart[:pos4]
+							}
+							urlpart = strings.Trim(urlpart, "\"")
+							found = true
+							enqueURL(ctx, urlpart, breadcrumbs)
+						}
 					}
 				}
 			}
@@ -1056,7 +1091,7 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 	})
 	if !found {
 		fmt.Printf("Looking for productGrid\n")
-		doc.Find("ul.productGrid,ul.threeColumnProductGrid").Each(func(i int, product *goquery.Selection) {
+		doc.Find("ul.productGrid,ul.threeColumnProductGrid,div.productTableWrapper").Each(func(i int, product *goquery.Selection) {
 			fmt.Printf("ProcessingProductGrid\n")
 			if processProductGrid(ctx, breadcrumbs, url, product) {
 				found = true
@@ -1072,13 +1107,11 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 			}
 		})
 	}
-	if !found {
-		doc.Find("script").Each(func(i int, product *goquery.Selection) {
-			if processLazyLoad(ctx, breadcrumbs, url, product) {
-				found = true
-			}
-		})
-	}
+	doc.Find("script").Each(func(i int, product *goquery.Selection) {
+		if processLazyLoad(ctx, breadcrumbs, url, product) {
+			found = true
+		}
+	})
 	if !found {
 		doc.Find("table.productTable").Each(func(i int, product *goquery.Selection) {
 			if processProductTableList(ctx, breadcrumbs, url, product) {
@@ -1171,10 +1204,10 @@ func checkError(err error) {
 	}
 }
 
-// LoadGoBilldaSpreedSheet -
+// LoadStatusSpreadsheet -
 // Get Part# and URL from gobilda ALL spreadsheet:
 // https://docs.google.com/spreadsheets/d/15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM/edit
-func LoadGoBilldaSpreedSheet(spreadsheetID string) ReferenceData {
+func LoadStatusSpreadsheet(spreadsheetID string) *ReferenceData {
 
 	b, err := ioutil.ReadFile("credentials.json")
 	if err != nil {
@@ -1206,7 +1239,8 @@ func LoadGoBilldaSpreedSheet(spreadsheetID string) ReferenceData {
 			continue
 		}
 
-		if dup, ok := referenceData.partNumber[row[partNumberColumnIndex].Value]; ok {
+		dup, ok := referenceData.partNumber[row[partNumberColumnIndex].Value]
+		if ok {
 			fmt.Printf("row %d: duplicate part number '%s' found (original row %d)\n", ii, row[partNumberColumnIndex].Value, dup[partNumberColumnIndex].Row)
 		} else {
 			referenceData.partNumber[row[partNumberColumnIndex].Value] = row
@@ -1217,7 +1251,7 @@ func LoadGoBilldaSpreedSheet(spreadsheetID string) ReferenceData {
 		}
 	}
 
-	return *referenceData
+	return referenceData
 }
 
 func excludeFromMatch(row []spreadsheet.Cell) bool {
