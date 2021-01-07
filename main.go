@@ -231,6 +231,12 @@ func main() {
 		preloadQueueURL(q, val, "Initial")
 	}
 	preloadQueueURL(q, *seed, "Home > Competition > FTC")
+
+	// Pre-queue any of the URLs that we had already found
+	for _, entry := range referenceData.partNumber {
+		preloadQueueURL(q, entry.URL, entry.Section)
+	}
+
 	q.Block()
 
 	for _, entry := range referenceData.partNumber {
@@ -494,7 +500,6 @@ func outputCategory(breadcrumbs string, trimlast bool) {
 // checkMatch compares a partData to what has been captured from the spreadsheet
 // Any differences are put into the notes
 func checkMatch(partData *PartData) {
-
 	entry, found := referenceData.partNumber[partData.SKU]
 	if !found {
 		entry, found = referenceData.url[partData.URL]
@@ -506,18 +511,77 @@ func checkMatch(partData *PartData) {
 		delete(referenceData.partNumber, entry.SKU)
 		referenceData.mu.Unlock()
 
-		// Check t
+		// // Check the contents of the record and see what needs to be consolidated
+		extra := ""
+		separator := ", "
+		// We are gathering everything in the notes section, we need to use the comma between entries just to make it easy
+		if partData.Notes != "" {
+			extra = separator
+		}
+		if entry.Notes != "" {
+			partData.Notes += extra + entry.Notes
+			extra = separator
+		}
+		// If it was in a different path (the part moved on the website) Then we want to
+		// keep the old section and record a message for the new section
+		// Note that it may not have moved, but we chose to organize it slightly different
+		// A good example of this is hubs which are grouped by hub type
+		if !strings.EqualFold(partData.Section, entry.Section) {
+			partData.Notes += extra + "New Section:" + partData.Section
+			partData.Section = entry.Section
+			extra = separator
+		}
+		// Likewise if the name changed, we want to still use the old one.  This is because
+		// Often the website name has something like (2 pack) or a plural that we want to make singular
+		// TODO: Write code to map those names as we find them
+		if !strings.EqualFold(partData.Name, entry.Name) {
+			partData.Notes += extra + "New Name:" + partData.Name
+			partData.Name = entry.Name
+			extra = separator
+		}
+		// If the SKU changes then we really want to know it.  We should use the new SKU
+		// and stash away the old SKU but it needs to be updated
+		if !strings.EqualFold(partData.SKU, entry.SKU) {
+			partData.Notes += extra + " Old SKU:" + entry.SKU
+			extra = separator
+		}
+		// If the URL changes then we really want to use it.
+		// Just stash away the old URL so we know what happened
+		if !strings.EqualFold(partData.URL, entry.URL) {
+			partData.Notes += extra + " Old URL:" + entry.URL
+			extra = separator
+		}
+		// For the model, we have the special case of NOMODEL to ignore but we really
+		// don't need to record any information
+		if !strings.EqualFold(partData.ModelURL, entry.ModelURL) {
+			if strings.Contains(strings.ToUpper(partData.ModelURL), "NOMODEL") {
+				partData.ModelURL = entry.ModelURL
+			}
+		}
+		// Copy over the Onshape model URL and the part status (unless we already set them)
+		// It is possible that the vendor may start putting the onshape URL on the website and we
+		// will need to handle that case here.
+		if partData.OnshapeURL == "" {
+			partData.OnshapeURL = entry.OnshapeURL
+		}
+		if partData.Status == "" {
+			partData.Status = entry.Status
+		}
+	} else {
+		partData.SpiderStatus = "Not Found"
+		partData.Status = "Not Done"
 	}
 
 }
 
-// outputSpideredProduct
+// outputProduct takes the spidered information and generates the output structure
 func outputProduct(name string, sku string, url string, modelURL string, extra []string) {
 	var partData PartData
 	partData.Name = name
 	partData.SKU = sku
 	partData.URL = url
 	partData.ModelURL = modelURL
+	partData.Section = lastcategory
 	if extra != nil {
 		for i, s := range extra {
 			partData.Extra[i] = s
@@ -528,15 +592,14 @@ func outputProduct(name string, sku string, url string, modelURL string, extra [
 }
 
 // --------------------------------------------------------------------------------------------
-// outputProduct generates the product line for the output file and also prints a status message on stdout
+// checkOutputPart Updated a part data from the match data and then outputs it
 func checkOutputPart(partData *PartData) {
-
 	checkMatch(partData)
 	outputPartData(partData)
 }
 
 // --------------------------------------------------------------------------------------------
-// outputProduct generates the product line for the output file and also prints a status message on stdout
+// outputPartData generates the product line for the output file and also prints a status message on stdout
 func outputPartData(partData *PartData) {
 
 	checkMatch(partData)
