@@ -12,15 +12,17 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/fetchbot"
 	"github.com/PuerkitoBio/goquery"
+
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
-	"gopkg.in/Iwark/spreadsheet.v2"
+	"google.golang.org/api/sheets/v4"
 )
 
 // PartData collects all the information about an individual part.
@@ -48,15 +50,23 @@ type PartData struct {
 // ReferenceData - collection of part numbers and urls
 type ReferenceData struct {
 	mu         sync.Mutex
-	sheet      *spreadsheet.Sheet
+	partdata   []*PartData
 	partNumber map[string]*PartData
 	url        map[string]*PartData
 }
 
 var (
-	nameColumnIndex       uint = 2
-	partNumberColumnIndex uint = 3
-	urlColumnIndex        uint = 5
+	orderColumnIndex      int = 0
+	sectionColumnIndex    int = 1
+	nameColumnIndex       int = 2
+	skuColumnIndex        int = 3
+	combinedNameIndex     int = 4
+	urlColumnIndex        int = 5
+	modelURLColumnIndex   int = 6
+	extraColumnIndex      int = 7
+	onShapeURLColumnIndex int = 14
+	statusColumnIndex     int = 15
+	notesColumnIndex      int = 16
 )
 
 type category struct {
@@ -1242,47 +1252,82 @@ func LoadStatusSpreadsheet(spreadsheetID string) *ReferenceData {
 	}
 	client := getClient(config)
 
-	service := spreadsheet.NewServiceWithClient(client)
-	sheets, err := service.FetchSpreadsheet(spreadsheetID)
+	srv, err := sheets.New(client)
 	checkError(err)
+
+	readRange := "All"
+	response, err := srv.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
+	checkError(err)
+
+	if len(response.Values) == 0 {
+		fmt.Println("No data in spreadsheet !")
+	}
 
 	var referenceData = new(ReferenceData)
-	referenceData.partNumber = make(map[string][]spreadsheet.Cell)
-	referenceData.url = make(map[string][]spreadsheet.Cell)
-	referenceData.sheet, err = sheets.SheetByTitle("All")
-	checkError(err)
+	referenceData.partNumber = make(map[string]*PartData)
+	referenceData.url = make(map[string]*PartData)
+	referenceData.partdata = make([]*PartData, len(response.Values))
 
-	for ii, row := range referenceData.sheet.Rows {
+	for ii, cols := range response.Values {
 		if ii == 0 {
 			continue // header row
 		}
-		if excludeFromMatch(row) {
+
+		partdata := new(PartData)
+		for jj, col := range cols {
+			switch {
+			case jj == orderColumnIndex:
+				value, err := strconv.ParseUint(col.(string), 0, 32)
+				checkError(err)
+				partdata.Order = uint(value)
+			case jj == sectionColumnIndex:
+				partdata.Section = col.(string)
+			case jj == nameColumnIndex:
+				partdata.Name = col.(string)
+			case jj == skuColumnIndex:
+				partdata.SKU = col.(string)
+			case jj == urlColumnIndex:
+				partdata.URL = col.(string)
+			case jj == modelURLColumnIndex:
+				partdata.ModelURL = col.(string)
+			case jj == onShapeURLColumnIndex:
+				partdata.OnshapeURL = col.(string)
+			case jj >= extraColumnIndex && jj <= extraColumnIndex+6:
+				partdata.Extra[jj-extraColumnIndex] = col.(string)
+			case jj == statusColumnIndex:
+				partdata.Status = col.(string)
+			case jj == notesColumnIndex:
+				partdata.Notes = col.(string)
+			default:
+			}
+			partdata.SpiderStatus = "Not Found by Spider"
+			referenceData.partdata[ii] = partdata
+		}
+		if excludeFromMatch(partdata) {
 			continue
 		}
-
-		dup, ok := referenceData.partNumber[row[partNumberColumnIndex].Value]
+		dup, ok := referenceData.partNumber[partdata.SKU]
 		if ok {
-			fmt.Printf("row %d: duplicate part number '%s' found (original row %d)\n", ii, row[partNumberColumnIndex].Value, dup[partNumberColumnIndex].Row)
+			fmt.Printf("row %d: duplicate part number '%s' found (original row %d)\n", ii, partdata.SKU, dup.Order)
 		} else {
-			referenceData.partNumber[row[partNumberColumnIndex].Value] = row
+			referenceData.partNumber[partdata.SKU] = partdata
 		}
 
-		if uint(len(row)) > partNumberColumnIndex {
-			referenceData.url[row[urlColumnIndex].Value] = row
-		}
+		referenceData.url[partdata.URL] = partdata
+
 	}
 
 	return referenceData
 }
 
-func excludeFromMatch(row []spreadsheet.Cell) bool {
-	if strings.HasPrefix(row[nameColumnIndex].Value, "--") {
+func excludeFromMatch(partdata *PartData) bool {
+	if strings.HasPrefix(partdata.Name, "--") {
 		return true
 	}
-	if strings.HasPrefix(row[partNumberColumnIndex].Value, "(Configurable)") {
+	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
 		return true
 	}
-	if strings.HasPrefix(row[partNumberColumnIndex].Value, "(??") {
+	if strings.HasPrefix(partdata.SKU, "(??") {
 		return true
 	}
 	return false
