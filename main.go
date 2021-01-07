@@ -240,7 +240,6 @@ func main() {
 	q.Block()
 
 	for _, entry := range referenceData.partNumber {
-		entry.SpiderStatus = "Not Found"
 		outputPartData(entry)
 	}
 }

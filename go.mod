@@ -12,5 +12,4 @@ require (
 	golang.org/x/sys v0.0.0-20210105210732-16f7687f5001 // indirect
 	google.golang.org/api v0.36.0
 	google.golang.org/genproto v0.0.0-20210106152847-07624b53cd92 // indirect
-	gopkg.in/Iwark/spreadsheet.v2 v2.0.0-20191122095212-08231195c43b // indirect
 )
