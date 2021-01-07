@@ -38,9 +38,10 @@ type PartData struct {
 	Status       string    // Status of the Onshape model (Done, Bundle, etc)
 	SpiderStatus string    // Status from the latest spidering.  Possible values are
 	//                            New            SKU was found on website but was not in the spreadsheet
-	//                            NotFound       SKU from spreadsheet was not found on the website
+	//                            Not Found      SKU from spreadsheet was not found on the website
 	//                            Changed        SKU was found on website but some data didn't match.  The Notes field indicates what has changed
 	//                            Discontinued   SKU was identified as discontinued
+	//                      Note, when reading in from the spreadsheet, the value should be initialized to Not Found unless it already was Discontinued
 	Notes string // Any general information about the part
 }
 
@@ -48,8 +49,8 @@ type PartData struct {
 type ReferenceData struct {
 	mu         sync.Mutex
 	sheet      *spreadsheet.Sheet
-	partNumber map[string][]spreadsheet.Cell
-	url        map[string][]spreadsheet.Cell
+	partNumber map[string]*PartData
+	url        map[string]*PartData
 }
 
 var (
@@ -223,13 +224,8 @@ func main() {
 	q.Block()
 
 	for _, entry := range referenceData.partNumber {
-		fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v\n", linenum, "MIA in Crawl", "",
-			entry[nameColumnIndex].Value, entry[partNumberColumnIndex].Value,
-			entry[nameColumnIndex].Value+" "+entry[partNumberColumnIndex].Value,
-			entry[urlColumnIndex].Value,
-			"",
-			"")
-		linenum++
+		entry.SpiderStatus = "Not Found"
+		outputPartData(entry)
 	}
 }
 
@@ -485,46 +481,71 @@ func outputCategory(breadcrumbs string, trimlast bool) {
 	}
 }
 
-func matched(sku string, url string) (matched bool, matchType string) {
+// checkMatch compares a partData to what has been captured from the spreadsheet
+// Any differences are put into the notes
+func checkMatch(partData *PartData) {
 
-	matchType = "No Match"
-
-	if entry, ok := referenceData.partNumber[sku]; ok {
-		matchType = "SKU Match"
-
+	entry, found := referenceData.partNumber[partData.SKU]
+	if !found {
+		entry, found = referenceData.url[partData.URL]
+	}
+	if found {
+		// We matched a previous entry
 		referenceData.mu.Lock()
-		delete(referenceData.url, entry[urlColumnIndex].Value)
-		delete(referenceData.partNumber, sku)
+		delete(referenceData.url, entry.URL)
+		delete(referenceData.partNumber, entry.SKU)
 		referenceData.mu.Unlock()
 
-	} else {
-		if _, ok := referenceData.url[url]; ok {
-			matchType = "URL Match"
+		// Check t
+	}
 
-			referenceData.mu.Lock()
-			delete(referenceData.url, url)
-			delete(referenceData.partNumber, entry[partNumberColumnIndex].Value)
-			referenceData.mu.Unlock()
+}
+
+// outputSpideredProduct
+func outputProduct(name string, sku string, url string, modelURL string, extra []string) {
+	var partData PartData
+	partData.Name = name
+	partData.SKU = sku
+	partData.URL = url
+	partData.ModelURL = modelURL
+	if extra != nil {
+		for i, s := range extra {
+			partData.Extra[i] = s
 		}
 	}
-	return matched, matchType
+
+	checkOutputPart(&partData)
 }
 
 // --------------------------------------------------------------------------------------------
 // outputProduct generates the product line for the output file and also prints a status message on stdout
-func outputProduct(name string, sku string, url string, downloadurl string, extra string) {
+func checkOutputPart(partData *PartData) {
 
-	matched, matchType := matched(sku, url)
+	checkMatch(partData)
+	outputPartData(partData)
+}
 
-	if !matched {
-		fmt.Printf("%s |SKU: '%v' Product: '%v' Model:'%v' Extra: '%v' on page '%v'\n", matchType, sku, name, downloadurl, extra, url)
-	}
+// --------------------------------------------------------------------------------------------
+// outputProduct generates the product line for the output file and also prints a status message on stdout
+func outputPartData(partData *PartData) {
 
-	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v\n", linenum, matchType, lastcategory, name, sku, name+" "+sku, url, downloadurl, extra)
+	checkMatch(partData)
+	fmt.Printf("%s |SKU: '%v' Product: '%v' Model:'%v' on page '%v'\n", partData.SpiderStatus, partData.SKU, partData.Name, partData.ModelURL, partData.URL)
 
 	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
-
-		linenum, lastcategory, name, sku, name+" "+sku, url, downloadurl, "", extra, "", "", "", "", "", "", "Onshape URL", "Model Status", matchType, "Notes")
+		partData.Order,
+		partData.Section,
+		partData.Name,
+		partData.SKU,
+		strings.TrimSpace(partData.Name+" "+partData.SKU),
+		partData.URL,
+		partData.ModelURL,
+		"",
+		partData.Extra[0], partData.Extra[1], partData.Extra[2], partData.Extra[3], partData.Extra[4], partData.Extra[5], partData.Extra[6],
+		partData.OnshapeURL,
+		partData.Status,
+		partData.SpiderStatus,
+		partData.Notes)
 	linenum++
 }
 
@@ -806,12 +827,12 @@ func processProduct(ctx *fetchbot.Context, productname string, url string, produ
 						itemname += " " + label.Text()
 					}
 				}
-				outputProduct(itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), "")
+				outputProduct(itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), nil)
 
 			})
 		} else {
 			fmt.Printf("No Changeset\n")
-			outputProduct(localname, sku, url, getDownloadURL(ctx, sku, downloadurls), "")
+			outputProduct(localname, sku, url, getDownloadURL(ctx, sku, downloadurls), nil)
 		}
 		found = true
 	}
@@ -912,7 +933,7 @@ func processTable(ctx *fetchbot.Context, productname string, url string, downloa
 	if result {
 		table.Find("tbody tr").Each(func(i int, tr *goquery.Selection) {
 			sku := ""
-			outpad := ""
+			var outpad []string
 			outname := productname
 			tr.Find("td").Each(func(i int, td *goquery.Selection) {
 				column := ""
@@ -937,7 +958,7 @@ func processTable(ctx *fetchbot.Context, productname string, url string, downloa
 				case actKeepTo:
 					outname += " " + column + " To"
 				case actOutput:
-					outpad += "`" + colnames[i].name + ":" + column
+					outpad = append(outpad, colnames[i].name+":"+column)
 				default:
 				}
 			})
@@ -1055,7 +1076,7 @@ func processJavascriptSelector(ctx *fetchbot.Context, breadcrumbs string, url st
 	})
 	// Ok we got the data.  Dump it out for now
 	for _, value := range ProductMap {
-		outputProduct(productname+" "+value.Label, value.SKU, url, getDownloadURL(ctx, value.SKU, downloadurls), "")
+		outputProduct(productname+" "+value.Label, value.SKU, url, getDownloadURL(ctx, value.SKU, downloadurls), nil)
 		found = true
 	}
 	return
