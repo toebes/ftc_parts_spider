@@ -117,9 +117,9 @@ var (
 		// "https://www.servocity.com/kits/",
 	}
 	// Command-line flags
-	seed = flag.String("seed", "https://www.gobilda.com/aluminum-rex-shafting/", "seed URL") // Servos
-	// seed = flag.String("seed", "https://www.gobilda.com/structure/", "seed URL") // Servos
-	// seed = flag.String("seed", "https://www.servocity.com/electronics/", "seed URL") // Servos
+	seed = flag.String("seed", "https://www.gobilda.com/aluminum-rex-shafting/", "seed URL")
+	// seed = flag.String("seed", "https://www.gobilda.com/structure/", "seed URL")
+	// seed = flag.String("seed", "https://www.servocity.com/electronics/", "seed URL")
 
 	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
 	cancelAtURL   = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
@@ -438,11 +438,22 @@ func enqueURL(ctx *fetchbot.Context, url string, breadcrumb string) {
 		if _, err := ctx.Q.SendStringHead(u.String()); err != nil {
 			fmt.Printf("error: enqueue head %s - %s\n", u, err)
 		} else {
-			// fmt.Printf("+++Really Enqueue:%s\n", url)
 			bcmap[u.String()] = breadcrumb
 		}
-		// } else {
-		// fmt.Printf("It was a dup\n")
+	}
+}
+
+// markVisitedURL allows us to mark a page which has been received as part of a 301 redirect.
+// It prevents us from visiting a page twice (in theory)
+func markVisitedURL(ctx *fetchbot.Context, url string, breadcrumb string) {
+	u, err := ctx.Cmd.URL().Parse(url)
+	if err != nil {
+		fmt.Printf("error: resolve URL %s - %s\n", url, err)
+		return
+	}
+	_, found := bcmap[u.String()]
+	if !found {
+		bcmap[u.String()] = breadcrumb
 	}
 }
 
@@ -1233,6 +1244,8 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 	url := doc.Url.String()
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
+	markVisitedURL(ctx, url, breadcrumbs)
+
 	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
 	doc.Find("ul.navList").Each(func(i int, categoryproducts *goquery.Selection) {
 		fmt.Printf("Found Navlist\n")
@@ -1288,6 +1301,18 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 		fmt.Printf("**Related Found item name=%s url=%s\n", product, urlloc)
 		enqueURL(ctx, urlloc, makeBreadCrumb(breadcrumbs, product))
 	})
+	if !found {
+		// See if they have a meta refresh request for a page which is a redirect
+		doc.Find("meta[http-equiv=refresh]").Each(func(i int, meta *goquery.Selection) {
+			content, _ := meta.Attr("content")
+			pos := strings.Index(content, ";url=")
+			if pos >= 0 {
+				redirectURL := content[pos+5:]
+				enqueURL(ctx, redirectURL, breadcrumbs)
+				found = true
+			}
+		})
+	}
 	if !found {
 		outputError("Unable to process: %s\n", url)
 	}
