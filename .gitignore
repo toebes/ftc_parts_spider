@@ -1,6 +1,5 @@
-spider_gobilda.exe
-file.txt
+*.exe
+file*.txt
 .vscode/launch.json
 credentials.json
 token.json
-main.exe

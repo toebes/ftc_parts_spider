@@ -641,7 +641,7 @@ func checkMatch(partData *PartData) {
 }
 
 // outputProduct takes the spidered information and generates the output structure
-func outputProduct(name string, sku string, url string, modelURL string, extra []string) {
+func outputProduct(name string, sku string, url string, modelURL string, isDiscontinued bool, extra []string) {
 	var partData PartData
 	partData.Name = name
 	partData.SKU = sku
@@ -657,6 +657,10 @@ func outputProduct(name string, sku string, url string, modelURL string, extra [
 	linenum++
 
 	checkMatch(&partData)
+
+	if isDiscontinued {
+		partData.SpiderStatus = "Discontinued"
+	}
 	outputPartData(&partData)
 }
 
@@ -664,7 +668,6 @@ func outputProduct(name string, sku string, url string, modelURL string, extra [
 // outputPartData generates the product line for the output file and also prints a status message on stdout
 func outputPartData(partData *PartData) {
 
-	checkMatch(partData)
 	fmt.Printf("%s |SKU: '%v' Product: '%v' Model:'%v' on page '%v'\n", partData.SpiderStatus, partData.SKU, partData.Name, partData.ModelURL, partData.URL)
 
 	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
@@ -910,7 +913,7 @@ func processLazyLoad(ctx *fetchbot.Context, breadcrumbs string, url string, js *
 
 // --------------------------------------------------------------------------------------------
 // processProduct takes a standard page which has a single product on it and outputs the information
-func processProduct(ctx *fetchbot.Context, productname string, url string, product *goquery.Selection) (found bool) {
+func processProduct(ctx *fetchbot.Context, productname string, url string, product *goquery.Selection, isDiscontinued bool) (found bool) {
 	found = false
 	outputCategory(productname, false)
 	localname := product.Find(".productView-header h1.productView-title").Text()
@@ -940,7 +943,6 @@ func processProduct(ctx *fetchbot.Context, productname string, url string, produ
 	downloadurls := findAllDownloads(ctx, url, product)
 	if hassku {
 		if changeset.Children().Length() > 0 {
-			fmt.Printf("Has Changeset\n")
 			changeset.Find("input").Each(func(i int, input *goquery.Selection) {
 				itemname := localname
 				itemsku := sku
@@ -961,12 +963,10 @@ func processProduct(ctx *fetchbot.Context, productname string, url string, produ
 						itemname += " " + label.Text()
 					}
 				}
-				outputProduct(itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), nil)
-
+				outputProduct(itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), isDiscontinued, nil)
 			})
 		} else {
-			fmt.Printf("No Changeset\n")
-			outputProduct(localname, sku, url, getDownloadURL(ctx, sku, downloadurls), nil)
+			outputProduct(localname, sku, url, getDownloadURL(ctx, sku, downloadurls), isDiscontinued, nil)
 		}
 		found = true
 	}
@@ -1096,7 +1096,7 @@ func processTable(ctx *fetchbot.Context, productname string, url string, downloa
 				default:
 				}
 			})
-			outputProduct(outname, sku, url, getDownloadURL(ctx, sku, downloadurls), outpad)
+			outputProduct(outname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, outpad)
 		})
 	}
 	return
@@ -1210,7 +1210,7 @@ func processJavascriptSelector(ctx *fetchbot.Context, breadcrumbs string, url st
 	})
 	// Ok we got the data.  Dump it out for now
 	for _, value := range ProductMap {
-		outputProduct(productname+" "+value.Label, value.SKU, url, getDownloadURL(ctx, value.SKU, downloadurls), nil)
+		outputProduct(productname+" "+value.Label, value.SKU, url, getDownloadURL(ctx, value.SKU, downloadurls), false, nil)
 		found = true
 	}
 	return
@@ -1239,6 +1239,9 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	markVisitedURL(ctx, url, breadcrumbs)
 
+	// see if this has been discontinued
+	isDiscontinued := (doc.Find("p.discontinued").Length() > 0)
+
 	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
 	doc.Find("ul.navList").Each(func(i int, categoryproducts *goquery.Selection) {
 		fmt.Printf("Found Navlist\n")
@@ -1259,7 +1262,7 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 	}
 	if !found {
 		doc.Find("div[itemtype=\"http://schema.org/Product\"]").Each(func(i int, product *goquery.Selection) {
-			if processProduct(ctx, breadcrumbs, url, product) {
+			if processProduct(ctx, breadcrumbs, url, product, isDiscontinued) {
 				found = true
 			}
 		})
