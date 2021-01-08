@@ -2,27 +2,20 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/PuerkitoBio/fetchbot"
 	"github.com/PuerkitoBio/goquery"
-
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
-	"google.golang.org/api/sheets/v4"
 )
 
 // PartData collects all the information about an individual part.
@@ -53,21 +46,21 @@ type ReferenceData struct {
 	partdata   []*PartData
 	partNumber map[string]*PartData
 	url        map[string]*PartData
+
+	orderColumnIndex      int
+	sectionColumnIndex    int
+	nameColumnIndex       int
+	skuColumnIndex        int
+	combinedNameIndex     int
+	urlColumnIndex        int
+	modelURLColumnIndex   int
+	extraColumnIndex      int
+	onShapeURLColumnIndex int
+	statusColumnIndex     int
+	notesColumnIndex      int
 }
 
-var (
-	orderColumnIndex      int = 0
-	sectionColumnIndex    int = 1
-	nameColumnIndex       int = 2
-	skuColumnIndex        int = 3
-	combinedNameIndex     int = 4
-	urlColumnIndex        int = 5
-	modelURLColumnIndex   int = 6
-	extraColumnIndex      int = 7
-	onShapeURLColumnIndex int = 14
-	statusColumnIndex     int = 15
-	notesColumnIndex      int = 16
-)
+var ()
 
 type category struct {
 	name string
@@ -1234,152 +1227,6 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 		outputError("Unable to process: %s\n", url)
 	}
 	mu.Unlock()
-}
-
-// Retrieve a token, saves the token, then returns the generated client.
-func getClient(config *oauth2.Config) *http.Client {
-	// The file token.json stores the user's access and refresh tokens, and is
-	// created automatically when the authorization flow completes for the first
-	// time.
-	tokFile := "token.json"
-	tok, err := tokenFromFile(tokFile)
-	if err != nil {
-		tok = getTokenFromWeb(config)
-		saveToken(tokFile, tok)
-	}
-	return config.Client(context.Background(), tok)
-}
-
-// Request a token from the web, then returns the retrieved token.
-func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	fmt.Printf("Go to the following link in your browser then type the "+
-		"authorization code: \n%v\n", authURL)
-
-	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		log.Fatalf("Unable to read authorization code: %v", err)
-	}
-
-	tok, err := config.Exchange(context.TODO(), authCode)
-	if err != nil {
-		log.Fatalf("Unable to retrieve token from web: %v", err)
-	}
-	return tok
-}
-
-// Retrieves a token from a local file.
-func tokenFromFile(file string) (*oauth2.Token, error) {
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	tok := &oauth2.Token{}
-	err = json.NewDecoder(f).Decode(tok)
-	return tok, err
-}
-
-// Saves a token to a file path.
-func saveToken(path string, token *oauth2.Token) {
-	fmt.Printf("Saving credential file to: %s\n", path)
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
-	if err != nil {
-		log.Fatalf("Unable to cache oauth token: %v", err)
-	}
-	defer f.Close()
-	json.NewEncoder(f).Encode(token)
-}
-
-func checkError(err error) {
-	if err != nil {
-		panic(err.Error())
-	}
-}
-
-// LoadStatusSpreadsheet -
-// Get Part# and URL from gobilda ALL spreadsheet:
-// https://docs.google.com/spreadsheets/d/15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM/edit
-func LoadStatusSpreadsheet(spreadsheetID string) *ReferenceData {
-
-	b, err := ioutil.ReadFile("credentials.json")
-	if err != nil {
-		log.Fatalf("Unable to read client secret file: %v", err)
-	}
-
-	// If modifying these scopes, delete your previously saved token.json.
-	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets.readonly")
-	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
-	}
-	client := getClient(config)
-
-	srv, err := sheets.New(client)
-	checkError(err)
-
-	readRange := "All"
-	response, err := srv.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
-	checkError(err)
-
-	if len(response.Values) == 0 {
-		fmt.Println("No data in spreadsheet !")
-	}
-
-	var referenceData = new(ReferenceData)
-	referenceData.partNumber = make(map[string]*PartData)
-	referenceData.url = make(map[string]*PartData)
-	referenceData.partdata = make([]*PartData, len(response.Values))
-
-	for ii, cols := range response.Values {
-		if ii == 0 {
-			continue // header row
-		}
-
-		partdata := new(PartData)
-		for jj, col := range cols {
-			switch {
-			case jj == orderColumnIndex:
-				value, err := strconv.ParseUint(col.(string), 0, 32)
-				checkError(err)
-				partdata.Order = uint(value)
-			case jj == sectionColumnIndex:
-				partdata.Section = col.(string)
-			case jj == nameColumnIndex:
-				partdata.Name = col.(string)
-			case jj == skuColumnIndex:
-				partdata.SKU = col.(string)
-			case jj == urlColumnIndex:
-				partdata.URL = col.(string)
-			case jj == modelURLColumnIndex:
-				partdata.ModelURL = col.(string)
-			case jj == onShapeURLColumnIndex:
-				partdata.OnshapeURL = col.(string)
-			case jj >= extraColumnIndex && jj <= extraColumnIndex+6:
-				partdata.Extra[jj-extraColumnIndex] = col.(string)
-			case jj == statusColumnIndex:
-				partdata.Status = col.(string)
-			case jj == notesColumnIndex:
-				partdata.Notes = col.(string)
-			default:
-			}
-			partdata.SpiderStatus = "Not Found by Spider"
-			referenceData.partdata[ii] = partdata
-		}
-		if excludeFromMatch(partdata) {
-			continue
-		}
-		dup, ok := referenceData.partNumber[partdata.SKU]
-		if ok {
-			fmt.Printf("row %d: duplicate part number '%s' found (original row %d)\n", ii, partdata.SKU, dup.Order)
-		} else {
-			referenceData.partNumber[partdata.SKU] = partdata
-		}
-
-		referenceData.url[partdata.URL] = partdata
-
-	}
-
-	return referenceData
 }
 
 func excludeFromMatch(partdata *PartData) bool {
