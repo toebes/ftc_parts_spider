@@ -127,8 +127,6 @@ var (
 func main() {
 	flag.Parse()
 
-	referenceData = LoadStatusSpreadsheet(*spreadsheetID)
-
 	// Parse the provided seed
 	u, err := url.Parse(*seed)
 	if err != nil {
@@ -140,6 +138,8 @@ func main() {
 		log.Fatal(err)
 	}
 	outputHeader()
+
+	referenceData = LoadStatusSpreadsheet(*spreadsheetID)
 
 	// Create the muxer
 	mux := fetchbot.NewMux()
@@ -344,6 +344,8 @@ func saveCategory(name string, catclass string, url string) bool {
 func makeBreadCrumb(base string, toadd string) (result string) {
 	result = base
 	if toadd != "" {
+		toadd = strings.ReplaceAll(toadd, "\u00A0", " ")
+
 		if result != "" {
 			result += " > "
 		}
@@ -479,8 +481,8 @@ func processSubCategory(ctx *fetchbot.Context, breadcrumbs string, categoryprodu
 // outputHeader generates the first line of the output file with the column headers
 // Note that we use ` to separate columns because we sometimes see tabs in the names
 func outputHeader() {
-	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
-		"Order", "Section", "Name", "Part #", "Combined Name", "URL", "Model URL", "", "Extra 1", "Extra 2", "Extra 3", "Extra 4", "Extra 5", "Extra 6", "Extra 7", "Onshape URL", "Model Status", "Spider Status", "Notes")
+	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
+		"Order", "Section", "Name", "Part #", "Combined Name", "URL", "Model URL", "Extra 1", "Extra 2", "Extra 3", "Extra 4", "Extra 5", "Extra 6", "Extra 7", "Onshape URL", "Model Status", "Spider Status", "Notes")
 }
 
 // --------------------------------------------------------------------------------------------
@@ -534,8 +536,8 @@ func checkMatch(partData *PartData) {
 		if !strings.EqualFold(partData.Section, entry.Section) && partData.Section != "" {
 			// See if this is really a section change. Some things need to be modified before we accept it
 			// First all non-breaking spaces are turned to regular spaces
-			newsection := strings.ReplaceAll(partData.Section, "\xA0", " ")
-			oldsection := strings.ReplaceAll(entry.Section, "\xA0", " ")
+			newsection := strings.ReplaceAll(partData.Section, "\u00A0", " ")
+			oldsection := strings.ReplaceAll(entry.Section, "\u00A0", " ")
 			// Then we delete some known patterns
 			deleteParts := []string{
 				"Shop by Electrical Connector Style > ",
@@ -571,7 +573,7 @@ func checkMatch(partData *PartData) {
 				partData.Section = entry.Section
 			} else {
 				partData.SpiderStatus = "Changed"
-				partData.Notes += extra + "New Section:" + partData.Section
+				partData.Notes += extra + "New Section:" + newsection
 				partData.Section = entry.Section
 				extra = separator
 			}
@@ -579,7 +581,7 @@ func checkMatch(partData *PartData) {
 		// Likewise if the name changed, we want to still use the old one.  This is because
 		// Often the website name has something like (2 pack) or a plural that we want to make singular
 		if !strings.EqualFold(partData.Name, entry.Name) {
-			newName := strings.ReplaceAll(partData.Name, "\xA0", " ")
+			newName := strings.ReplaceAll(partData.Name, "\u00A0", " ")
 			newName = strings.ReplaceAll(newName, "  ", " ")
 			oldName := strings.ReplaceAll(entry.Name, "  ", " ")
 			// Name changes
@@ -670,7 +672,7 @@ func outputPartData(partData *PartData) {
 
 	fmt.Printf("%s |SKU: '%v' Product: '%v' Model:'%v' on page '%v'\n", partData.SpiderStatus, partData.SKU, partData.Name, partData.ModelURL, partData.URL)
 
-	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
+	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
 		partData.Order,
 		partData.Section,
 		partData.Name,
@@ -678,7 +680,6 @@ func outputPartData(partData *PartData) {
 		strings.TrimSpace(partData.Name+" "+partData.SKU),
 		partData.URL,
 		partData.ModelURL,
-		"",
 		partData.Extra[0], partData.Extra[1], partData.Extra[2], partData.Extra[3], partData.Extra[4], partData.Extra[5], partData.Extra[6],
 		partData.OnshapeURL,
 		partData.Status,
@@ -1316,14 +1317,21 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 }
 
 func excludeFromMatch(partdata *PartData) bool {
+	exclude := false
 	if strings.HasPrefix(partdata.Name, "--") {
-		return true
+		exclude = true
 	}
 	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
-		return true
+		exclude = true
 	}
 	if strings.HasPrefix(partdata.SKU, "(??") {
-		return true
+		exclude = true
 	}
-	return false
+	if exclude {
+		partdata.Order = uint(linenum)
+		partdata.SpiderStatus = "Same"
+		outputPartData(partdata)
+		linenum++
+	}
+	return exclude
 }
