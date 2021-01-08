@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -36,6 +37,7 @@ type PartData struct {
 	//                            Not Found      SKU from spreadsheet was not found on the website
 	//                            Changed        SKU was found on website but some data didn't match.  The Notes field indicates what has changed
 	//                            Discontinued   SKU was identified as discontinued
+	//                            Same           Product is the same
 	//                      Note, when reading in from the spreadsheet, the value should be initialized to Not Found unless it already was Discontinued
 	Notes string // Any general information about the part
 }
@@ -495,7 +497,6 @@ func outputCategory(breadcrumbs string, trimlast bool) {
 	if category != lastcategory {
 		fmt.Printf("|CATEGORY:|%s\n", category)
 		// fmt.Fprintf(outfile, "%d`CATEGORY: %s\n", linenum, category)
-		linenum++
 		lastcategory = category
 	}
 }
@@ -525,32 +526,94 @@ func checkMatch(partData *PartData) {
 			partData.Notes += extra + entry.Notes
 			extra = separator
 		}
+		partData.SpiderStatus = "Same"
 		// If it was in a different path (the part moved on the website) Then we want to
 		// keep the old section and record a message for the new section
 		// Note that it may not have moved, but we chose to organize it slightly different
 		// A good example of this is hubs which are grouped by hub type
-		if !strings.EqualFold(partData.Section, entry.Section) {
-			partData.Notes += extra + "New Section:" + partData.Section
-			partData.Section = entry.Section
-			extra = separator
+		if !strings.EqualFold(partData.Section, entry.Section) && partData.Section != "" {
+			// See if this is really a section change. Some things need to be modified before we accept it
+			// First all non-breaking spaces are turned to regular spaces
+			newsection := strings.ReplaceAll(partData.Section, "\xA0", " ")
+			oldsection := strings.ReplaceAll(entry.Section, "\xA0", " ")
+			// Then we delete some known patterns
+			deleteParts := []string{
+				"Shop by Electrical Connector Style > ",
+				"Shop by Hub Style > ",
+				" Aluminum REX Shafting >",
+				" Stainless Steel D-Shafting >",
+				" > Motor Mounts for AndyMark NeveRest Motors > Motor Mounts for NeveRest Orbital Gear Motors",
+				" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV Core Hex Motor",
+				" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV UltraPlanetary Gearbox",
+			}
+			for _, deleteStr := range deleteParts {
+				newsection = strings.ReplaceAll(newsection, deleteStr, "")
+			}
+			//  Then strip leading/trailing blanks
+			newsection = strings.TrimSpace(newsection)
+			// Special cases
+			allowedMap := map[string]string{
+				"1310-0016-4012": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
+				"1311-0016-1006": "MOTION > Hubs > Sonic Hubs > Thru-Hole Sonic Hubs (16mm Pattern)",
+				"1309-0016-1006": "MOTION > Hubs > Sonic Hubs > Sonic Hubs (16mm Pattern)",
+				"1310-0016-1006": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
+				"1312-0016-1006": "MOTION > Hubs > Sonic Hubs > Double Sonic Hubs (16mm Pattern)",
+				"1309-0016-0006": "MOTION > Hubs > Sonic Hubs > Sonic Hubs (16mm Pattern)",
+				"1310-0016-0008": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
+				"1310-0016-5008": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
+				"1123-0048-0048": "STRUCTURE > Pattern Plates",
+			}
+			propersection, matched := allowedMap[entry.SKU]
+
+			// if it now matches then we want to use the OLD section silently
+			// Also if it is one of the known special cases we also let it use the old section
+			if strings.EqualFold(newsection, oldsection) || (matched && strings.EqualFold(propersection, oldsection)) {
+				partData.Section = entry.Section
+			} else {
+				partData.SpiderStatus = "Changed"
+				partData.Notes += extra + "New Section:" + partData.Section
+				partData.Section = entry.Section
+				extra = separator
+			}
 		}
 		// Likewise if the name changed, we want to still use the old one.  This is because
 		// Often the website name has something like (2 pack) or a plural that we want to make singular
-		// TODO: Write code to map those names as we find them
 		if !strings.EqualFold(partData.Name, entry.Name) {
-			partData.Notes += extra + "New Name:" + partData.Name
-			partData.Name = entry.Name
-			extra = separator
+			newName := strings.ReplaceAll(partData.Name, "\xA0", " ")
+			newName = strings.ReplaceAll(newName, "  ", " ")
+			oldName := strings.ReplaceAll(entry.Name, "  ", " ")
+			// Name changes
+			// Get rid of any <n> Pack in the name
+			var re = regexp.MustCompile(" *-* *[0-9]+ Pack *")
+			newName = re.ReplaceAllString(newName, "")
+
+			oldName = strings.ReplaceAll(oldName, "[DISCONTINUED]", "")
+			oldName = strings.ReplaceAll(oldName, "[OBSOLETE]", "")
+
+			oldName = strings.TrimSpace(oldName)
+			newName = strings.TrimSpace(newName)
+
+			if strings.EqualFold(oldName, newName) {
+				partData.Name = newName
+			} else {
+				// Eliminate double spaces
+				partData.SpiderStatus = "Changed"
+				partData.Notes += extra + "New Name:" + newName
+				partData.Name = oldName
+				extra = separator
+			}
 		}
 		// If the SKU changes then we really want to know it.  We should use the new SKU
 		// and stash away the old SKU but it needs to be updated
 		if !strings.EqualFold(partData.SKU, entry.SKU) {
+			partData.SpiderStatus = "Changed"
 			partData.Notes += extra + " Old SKU:" + entry.SKU
 			extra = separator
 		}
 		// If the URL changes then we really want to use it.
 		// Just stash away the old URL so we know what happened
 		if !strings.EqualFold(partData.URL, entry.URL) {
+			partData.SpiderStatus = "Changed"
 			partData.Notes += extra + " Old URL:" + entry.URL
 			extra = separator
 		}
@@ -590,15 +653,11 @@ func outputProduct(name string, sku string, url string, modelURL string, extra [
 			partData.Extra[i] = s
 		}
 	}
+	partData.Order = uint(linenum)
+	linenum++
 
-	checkOutputPart(&partData)
-}
-
-// --------------------------------------------------------------------------------------------
-// checkOutputPart Updated a part data from the match data and then outputs it
-func checkOutputPart(partData *PartData) {
-	checkMatch(partData)
-	outputPartData(partData)
+	checkMatch(&partData)
+	outputPartData(&partData)
 }
 
 // --------------------------------------------------------------------------------------------
@@ -622,7 +681,6 @@ func outputPartData(partData *PartData) {
 		partData.Status,
 		partData.SpiderStatus,
 		partData.Notes)
-	linenum++
 }
 
 // --------------------------------------------------------------------------------------------
