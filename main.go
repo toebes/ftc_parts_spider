@@ -53,7 +53,6 @@ type ReferenceData struct {
 	sectionColumnIndex    int
 	nameColumnIndex       int
 	skuColumnIndex        int
-	combinedNameIndex     int
 	urlColumnIndex        int
 	modelURLColumnIndex   int
 	extraColumnIndex      int
@@ -103,24 +102,25 @@ var (
 		// "https://www.gobilda.com/hardware/",
 		// "https://www.gobilda.com/kits/",
 
-		// "https://www.servocity.com/structure/",
-		// "https://www.servocity.com/motion/",
-		// "https://www.servocity.com/electronics/",
-		// "https://www.servocity.com/hardware/",
-		// "https://www.servocity.com/kits/",
+		"https://www.servocity.com/structure/",
+		"https://www.servocity.com/motion/",
+		"https://www.servocity.com/electronics/",
+		"https://www.servocity.com/hardware/",
+		"https://www.servocity.com/kits/",
 	}
 	// Command-line flags
-	seed = flag.String("seed", "https://www.gobilda.com/aluminum-rex-shafting/", "seed URL")
+	seed = flag.String("seed", "https://www.servocity.com/female-jst-rcy-leads/", "seed URL")
 	// seed = flag.String("seed", "https://www.gobilda.com/structure/", "seed URL")
 	// seed = flag.String("seed", "https://www.servocity.com/electronics/", "seed URL")
 
-	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
-	cancelAtURL   = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
-	stopAfter     = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
-	stopAtURL     = flag.String("stopat", "", "automatically stop the fetchbot at a given URL")
-	memStats      = flag.Duration("memstats", 0, "display memory statistics at a given interval")
-	fileout       = flag.String("out", "file.txt", "Output File")
-	spreadsheetID = flag.String("spreadsheet", "15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM", "spider this spreadsheet")
+	cancelAfter = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
+	cancelAtURL = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
+	stopAfter   = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
+	stopAtURL   = flag.String("stopat", "", "automatically stop the fetchbot at a given URL")
+	memStats    = flag.Duration("memstats", 0, "display memory statistics at a given interval")
+	fileout     = flag.String("out", "file.txt", "Output File")
+	//	spreadsheetID = flag.String("spreadsheet", "15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM", "spider this spreadsheet")  // goBILDA
+	spreadsheetID = flag.String("spreadsheet", "15Mm-Thdcpl5fVPs3vnyFUXWthuaV1tacXPJ7xQuoB8A", "spider this spreadsheet") // ServoCity
 	outfile       *os.File
 )
 
@@ -354,6 +354,20 @@ func makeBreadCrumb(base string, toadd string) (result string) {
 	return
 }
 
+// strupURLSku removes any sku selector from a URL returning the cleaned string and an indication that it was removed
+func stripURLSku(url string) (result string, stripped bool) {
+	stripped = false
+	// Trim off any ?sku= on the URL
+	pos := strings.Index(url, "?sku=")
+	if pos > 0 { // note > and not >= because we don't want to get an empty URL
+		// Trim off any ?sku parameters
+		url = url[:pos]
+		stripped = true
+	}
+	result = url
+	return
+}
+
 // getBreadCrumbName returns the breadcrumb associated with a document
 // A typical one looks like this:
 //     <div class="breadcrumbs">
@@ -428,12 +442,14 @@ func enqueURL(ctx *fetchbot.Context, url string, breadcrumb string) {
 		fmt.Printf("error: resolve URL %s - %s\n", url, err)
 		return
 	}
-	_, found := bcmap[u.String()]
+	// Trim off any sku= on the URL
+	urlString, _ := stripURLSku(u.String())
+	_, found := bcmap[urlString]
 	if !found {
-		if _, err := ctx.Q.SendStringHead(u.String()); err != nil {
+		if _, err := ctx.Q.SendStringHead(urlString); err != nil {
 			fmt.Printf("error: enqueue head %s - %s\n", u, err)
 		} else {
-			bcmap[u.String()] = breadcrumb
+			bcmap[urlString] = breadcrumb
 		}
 	}
 }
@@ -615,9 +631,22 @@ func checkMatch(partData *PartData) {
 		// If the URL changes then we really want to use it.
 		// Just stash away the old URL so we know what happened
 		if !strings.EqualFold(partData.URL, entry.URL) {
-			partData.SpiderStatus = "Changed"
-			partData.Notes += extra + " Old URL:" + entry.URL
-			extra = separator
+			// In the case where there was a sku= on the URL we want to keep the one with it
+			urlString := partData.URL
+			newURL, strippedNew := stripURLSku(partData.URL)
+			oldURL, strippedOld := stripURLSku(entry.URL)
+			if !strippedNew && strippedOld {
+				urlString = entry.URL
+			}
+			// If they matched without the URL on it, then we want to take the one that
+			// had the URL silently.
+			if strings.EqualFold(oldURL, newURL) {
+				partData.URL = urlString
+			} else {
+				partData.SpiderStatus = "Changed"
+				partData.Notes += extra + " Old URL:" + entry.URL
+				extra = separator
+			}
 		}
 		// For the model, we have the special case of NOMODEL to ignore but we really
 		// don't need to record any information
@@ -914,7 +943,7 @@ func processLazyLoad(ctx *fetchbot.Context, breadcrumbs string, url string, js *
 
 // --------------------------------------------------------------------------------------------
 // processProduct takes a standard page which has a single product on it and outputs the information
-func processProduct(ctx *fetchbot.Context, productname string, url string, product *goquery.Selection, isDiscontinued bool) (found bool) {
+func processProduct(ctx *fetchbot.Context, productname string, url string, product *goquery.Selection, isDiscontinued bool, addSKU bool) (found bool) {
 	found = false
 	outputCategory(productname, false)
 	localname := product.Find(".productView-header h1.productView-title").Text()
@@ -967,6 +996,10 @@ func processProduct(ctx *fetchbot.Context, productname string, url string, produ
 				outputProduct(itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), isDiscontinued, nil)
 			})
 		} else {
+			if addSKU {
+				url, _ = stripURLSku(url)
+				url += "?sku=" + sku
+			}
 			outputProduct(localname, sku, url, getDownloadURL(ctx, sku, downloadurls), isDiscontinued, nil)
 		}
 		found = true
@@ -1262,8 +1295,9 @@ func enqueueLinks(ctx *fetchbot.Context, doc *goquery.Document) {
 		})
 	}
 	if !found {
-		doc.Find("div[itemtype=\"http://schema.org/Product\"]").Each(func(i int, product *goquery.Selection) {
-			if processProduct(ctx, breadcrumbs, url, product, isDiscontinued) {
+		products := doc.Find("div[itemtype=\"http://schema.org/Product\"]")
+		products.Each(func(i int, product *goquery.Selection) {
+			if processProduct(ctx, breadcrumbs, url, product, isDiscontinued, products.Length() > 1) {
 				found = true
 			}
 		})

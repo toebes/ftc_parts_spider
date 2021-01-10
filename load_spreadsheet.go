@@ -120,8 +120,11 @@ func LoadStatusSpreadsheet(spreadsheetID string) *ReferenceData {
 			switch {
 			case jj == referenceData.orderColumnIndex:
 				value, err := strconv.ParseUint(col.(string), 0, 32)
-				checkError(err)
-				partdata.Order = uint(value)
+				if err == nil {
+					partdata.Order = uint(value)
+				} else {
+					partdata.Order = 1
+				}
 			case jj == referenceData.sectionColumnIndex:
 				partdata.Section = col.(string)
 			case jj == referenceData.nameColumnIndex:
@@ -166,7 +169,6 @@ func getColumnIndexes(referenceData *ReferenceData, cols []interface{}) {
 	referenceData.sectionColumnIndex = -1
 	referenceData.nameColumnIndex = -1
 	referenceData.skuColumnIndex = -1
-	referenceData.combinedNameIndex = -1
 	referenceData.urlColumnIndex = -1
 	referenceData.modelURLColumnIndex = -1
 	referenceData.extraColumnIndex = -1
@@ -193,6 +195,8 @@ func getColumnIndexes(referenceData *ReferenceData, cols []interface{}) {
 		case "Extra 1":
 			referenceData.extraColumnIndex = jj
 		case "Status":
+			referenceData.statusColumnIndex = jj
+		case "Model Status":
 			referenceData.statusColumnIndex = jj
 		case "Notes":
 			referenceData.notesColumnIndex = jj
