@@ -139,7 +139,10 @@ func main() {
 	}
 	outputHeader()
 
-	referenceData = LoadStatusSpreadsheet(*spreadsheetID)
+	referenceData, err = LoadStatusSpreadsheet(spreadsheetID)
+	if err != nil {
+		fmt.Printf("%v\n", err)
+	}
 
 	// Create the muxer
 	mux := fetchbot.NewMux()

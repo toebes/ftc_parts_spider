@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -23,28 +23,28 @@ func getClient(config *oauth2.Config) *http.Client {
 	tokFile := "token.json"
 	tok, err := tokenFromFile(tokFile)
 	if err != nil {
-		tok = getTokenFromWeb(config)
+		tok, err = getTokenFromWeb(config)
 		saveToken(tokFile, tok)
 	}
 	return config.Client(context.Background(), tok)
 }
 
 // Request a token from the web, then returns the retrieved token.
-func getTokenFromWeb(config *oauth2.Config) *oauth2.Token {
+func getTokenFromWeb(config *oauth2.Config) (*oauth2.Token, error) {
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
 	fmt.Printf("Go to the following link in your browser then type the "+
 		"authorization code: \n%v\n", authURL)
 
 	var authCode string
 	if _, err := fmt.Scan(&authCode); err != nil {
-		log.Fatalf("Unable to read authorization code: %v", err)
+		return nil, fmt.Errorf("Unable to read authorization code. Caused by: %v", err)
 	}
 
 	tok, err := config.Exchange(context.TODO(), authCode)
 	if err != nil {
-		log.Fatalf("Unable to retrieve token from web: %v", err)
+		return nil, fmt.Errorf("Unable to retrieve token from web. Caused by %v", err)
 	}
-	return tok
+	return tok, nil
 }
 
 // Retrieves a token from a local file.
@@ -60,55 +60,60 @@ func tokenFromFile(file string) (*oauth2.Token, error) {
 }
 
 // Saves a token to a file path.
-func saveToken(path string, token *oauth2.Token) {
+func saveToken(path string, token *oauth2.Token) error {
 	fmt.Printf("Saving credential file to: %s\n", path)
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		log.Fatalf("Unable to cache oauth token: %v", err)
+		return fmt.Errorf("Unable to cache oauth token. Caused by %v", err)
 	}
 	defer f.Close()
 	json.NewEncoder(f).Encode(token)
-}
-
-func checkError(err error) {
-	if err != nil {
-		panic(err.Error())
-	}
+	return nil
 }
 
 // LoadStatusSpreadsheet -
 // Get Part# and URL from gobilda ALL spreadsheet:
 // https://docs.google.com/spreadsheets/d/15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM/edit
-func LoadStatusSpreadsheet(spreadsheetID string) *ReferenceData {
+func LoadStatusSpreadsheet(spreadsheetIDPtr *string) (*ReferenceData, error) {
+
+	var referenceData = new(ReferenceData)
+	referenceData.partNumber = make(map[string]*PartData)
+	referenceData.url = make(map[string]*PartData)
+
+	if spreadsheetIDPtr == nil {
+		fmt.Println("No SpreadsheetID was give, so no spreadsheet laoded")
+		return referenceData, nil
+	}
+	spreadsheetID := *spreadsheetIDPtr
 
 	b, err := ioutil.ReadFile("credentials.json")
 	if err != nil {
-		log.Fatalf("Unable to read client secret file: %v", err)
+		return nil, fmt.Errorf("Unable to read client secret file. Caused by: %v", err)
 	}
 
 	// If modifying these scopes, delete your previously saved token.json.
 	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets.readonly")
 	if err != nil {
-		log.Fatalf("Unable to parse client secret file to config: %v", err)
+		return nil, fmt.Errorf("Unable to parse client secret file to config. Caused by: %v", err)
 	}
 	client := getClient(config)
 
 	srv, err := sheets.New(client)
-	checkError(err)
+	if err != nil {
+		return nil, err
+	}
 
 	readRange := "All"
 	response, err := srv.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
-	checkError(err)
-
-	if len(response.Values) == 0 {
-		fmt.Println("No data in spreadsheet !")
+	if err != nil {
+		return nil, fmt.Errorf("Unable to find 'ALL' sheet in spreadsheet %s. Caused by: %v", spreadsheetID, err)
 	}
 
-	var referenceData = new(ReferenceData)
-	referenceData.partNumber = make(map[string]*PartData)
-	referenceData.url = make(map[string]*PartData)
-	referenceData.partdata = make([]*PartData, len(response.Values))
+	if len(response.Values) == 0 {
+		return nil, errors.New("no data in Spreadsheet")
+	}
 
+	referenceData.partdata = make([]*PartData, len(response.Values))
 	for ii, cols := range response.Values {
 		if ii == 0 {
 			getColumnIndexes(referenceData, cols)
@@ -162,7 +167,7 @@ func LoadStatusSpreadsheet(spreadsheetID string) *ReferenceData {
 
 	}
 
-	return referenceData
+	return referenceData, nil
 }
 func getColumnIndexes(referenceData *ReferenceData, cols []interface{}) {
 	referenceData.orderColumnIndex = -1
