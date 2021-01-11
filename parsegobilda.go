@@ -82,6 +82,8 @@ func checkServocityMatch(partData *PartData) {
 				" > Motor Mounts for AndyMark NeveRest Motors > Motor Mounts for NeveRest Orbital Gear Motors",
 				" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV Core Hex Motor",
 				" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV UltraPlanetary Gearbox",
+				" > XL Series, 3/8\" Width Timing Belts",
+				" > XL Series, 3/8\" Width, Cut Length Timing Belts",
 			}
 			for _, deleteStr := range deleteParts {
 				newsection = strings.ReplaceAll(newsection, deleteStr, "")
@@ -90,6 +92,7 @@ func checkServocityMatch(partData *PartData) {
 			newsection = strings.TrimSpace(newsection)
 			// Special cases
 			allowedMap := map[string]string{
+				// Go Bilda
 				"1310-0016-4012": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
 				"1311-0016-1006": "MOTION > Hubs > Sonic Hubs > Thru-Hole Sonic Hubs (16mm Pattern)",
 				"1309-0016-1006": "MOTION > Hubs > Sonic Hubs > Sonic Hubs (16mm Pattern)",
@@ -99,10 +102,38 @@ func checkServocityMatch(partData *PartData) {
 				"1310-0016-0008": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
 				"1310-0016-5008": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
 				"1123-0048-0048": "STRUCTURE > Pattern Plates",
+				// Servocity
+				"637213":   "KITS > Linear Motion Kits",
+				"ASCC8074": "HARDWARE > Lubricants",
+				"555192":   "STRUCTURE > Motor Mounts > Motor Mounts for NeveRest Classic Gear Motors",
+				"555104":   "STRUCTURE > Motor Mounts > Motor Mounts for Econ Spur Gear Motors",
+				"585074":   "Structure > X-Rail® > X-Rail® Accessories",
+				"585073":   "Structure > X-Rail® > X-Rail® Accessories",
 			}
+			// Other mappings allowed
+			equivalentMaps := [][]string{
+				{"MOTION > Bearings", "MOTION > Linear Bearings"},
+				{"KITS > FTC Kits", "KITS > Linear Motion Kits"},
+				{"MOTION > Couplers > Shop by Coupler Bore", "MOTION > Couplers > "},
+				{"ELECTRONICS > Wiring > Connector Style", "ELECTRONICS > Wiring > "},
+				{"MOTION > Hubs > Servo Hubs", "MOTION > Servos & Accessories > Servo Hubs"},
+				{"MOTION > Servos & Accessories > Servos", "MOTION > Servos & Accessories"},
+				{"STRUCTURE > Adaptors", "MOTION > Hubs"},
+				{"STRUCTURE > Brackets", "Structure > X-Rail® > X-Rail® Accessories"},
+			}
+			// Look for any equivalent mappings so that we end up trusting what is already in the spreadsheet.
 			propersection, matched := allowedMap[entry.SKU]
 			if len(oldsection) > len(newsection) && strings.EqualFold(newsection, oldsection[:len(newsection)]) {
 				newsection = oldsection
+			}
+
+			for _, strset := range equivalentMaps {
+				if len(strset) == 2 {
+					if strings.HasPrefix(newsection, strset[0]) && strings.HasPrefix(oldsection, strset[1]) {
+						newsection = oldsection
+						break
+					}
+				}
 			}
 
 			// if it now matches then we want to use the OLD section silently
@@ -124,9 +155,10 @@ func checkServocityMatch(partData *PartData) {
 			oldName := strings.ReplaceAll(entry.Name, "  ", " ")
 			// Name changes
 			// Get rid of any <n> Pack in the name
-			var re = regexp.MustCompile("[\\- \\(]*[0-9]+ [pP]ack[ \\)*]")
+			var re = regexp.MustCompile("[\\- \\(]*[0-9]+ [pP]ack[ \\)]*")
 			newName = re.ReplaceAllString(newName, "")
 
+			oldName = strings.ReplaceAll(oldName, "(Pair)", "")
 			oldName = strings.ReplaceAll(oldName, "[DISCONTINUED]", "")
 			oldName = strings.ReplaceAll(oldName, "[OBSOLETE]", "")
 

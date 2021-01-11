@@ -539,7 +539,10 @@ func excludeFromMatch(partdata *PartData) bool {
 	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
 		exclude = true
 	}
-	if strings.HasPrefix(partdata.SKU, "(??") {
+	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
+		exclude = true
+	}
+	if strings.HasPrefix(partdata.SKU, "(No Part Number)") {
 		exclude = true
 	}
 	if exclude {
