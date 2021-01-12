@@ -121,6 +121,7 @@ func checkServocityMatch(partData *PartData) {
 				{"STRUCTURE > Adaptors", "MOTION > Hubs"},
 				{"STRUCTURE > Brackets", "Structure > X-Rail® > X-Rail® Accessories"},
 			}
+
 			// Look for any equivalent mappings so that we end up trusting what is already in the spreadsheet.
 			propersection, matched := allowedMap[entry.SKU]
 			if len(oldsection) > len(newsection) && strings.EqualFold(newsection, oldsection[:len(newsection)]) {
@@ -129,7 +130,8 @@ func checkServocityMatch(partData *PartData) {
 
 			for _, strset := range equivalentMaps {
 				if len(strset) == 2 {
-					if strings.HasPrefix(newsection, strset[0]) && strings.HasPrefix(oldsection, strset[1]) {
+					if strings.HasPrefix(strings.ToUpper(newsection), strings.ToUpper(strset[0])) &&
+						strings.HasPrefix(strings.ToUpper(oldsection), strings.ToUpper(strset[1])) {
 						newsection = oldsection
 						break
 					}
@@ -155,7 +157,7 @@ func checkServocityMatch(partData *PartData) {
 			oldName := strings.ReplaceAll(entry.Name, "  ", " ")
 			// Name changes
 			// Get rid of any <n> Pack in the name
-			var re = regexp.MustCompile("[\\- \\(]*[0-9]+ [pP]ack[ \\)]*")
+			var re = regexp.MustCompile("[\\- \\(]*[0-9]+ [pP]ack *)*")
 			newName = re.ReplaceAllString(newName, "")
 
 			oldName = strings.ReplaceAll(oldName, "(Pair)", "")
@@ -187,8 +189,8 @@ func checkServocityMatch(partData *PartData) {
 		if !strings.EqualFold(partData.URL, entry.URL) {
 			// In the case where there was a sku= on the URL we want to keep the one with it
 			urlString := partData.URL
-			newURL, strippedNew := stripURLSku(partData.URL)
-			oldURL, strippedOld := stripURLSku(entry.URL)
+			newURL, strippedNew := cleanURL(partData.URL)
+			oldURL, strippedOld := cleanURL(entry.URL)
 			if !strippedNew && strippedOld {
 				urlString = entry.URL
 			}
@@ -581,7 +583,7 @@ func processProduct(ctx *fetchbot.Context, productname string, url string, produ
 			})
 		} else {
 			if addSKU {
-				url, _ = stripURLSku(url)
+				url, _ = cleanURL(url)
 				url += "?sku=" + sku
 			}
 			outputProduct(localname, sku, url, getDownloadURL(ctx, sku, downloadurls), isDiscontinued, nil)
