@@ -157,7 +157,7 @@ func checkServocityMatch(partData *PartData) {
 			oldName := strings.ReplaceAll(entry.Name, "  ", " ")
 			// Name changes
 			// Get rid of any <n> Pack in the name
-			var re = regexp.MustCompile("[\\- \\(]*[0-9]+ [pP]ack *)*")
+			var re = regexp.MustCompile("[\\- \\(]*[0-9]+ [pP]ack *\\)*")
 			newName = re.ReplaceAllString(newName, "")
 
 			oldName = strings.ReplaceAll(oldName, "(Pair)", "")
