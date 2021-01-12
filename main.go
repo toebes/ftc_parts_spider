@@ -282,7 +282,7 @@ func main() {
 }
 
 func preloadQueueURL(q *fetchbot.Queue, URL string, breadcrumb string) {
-	URL, _ = stripURLSku(URL)
+	URL, _ = cleanURL(URL)
 	_, found := bcmap[URL]
 	if !found {
 
@@ -397,11 +397,11 @@ func makeBreadCrumb(base string, toadd string) (result string) {
 	return
 }
 
-// strupURLSku removes any sku selector from a URL returning the cleaned string and an indication that it was removed
-func stripURLSku(url string) (result string, stripped bool) {
+// strupURLSku removes any selector from a URL returning the cleaned string and an indication that it was removed
+func cleanURL(url string) (result string, stripped bool) {
 	stripped = false
 	// Trim off any ?sku= on the URL
-	pos := strings.Index(url, "?sku=")
+	pos := strings.Index(url, "?")
 	if pos > 0 { // note > and not >= because we don't want to get an empty URL
 		// Trim off any ?sku parameters
 		url = url[:pos]
@@ -420,7 +420,7 @@ func enqueURL(ctx *fetchbot.Context, url string, breadcrumb string) {
 		return
 	}
 	// Trim off any sku= on the URL
-	urlString, _ := stripURLSku(u.String())
+	urlString, _ := cleanURL(u.String())
 	_, found := bcmap[urlString]
 	if !found {
 		if _, err := ctx.Q.SendStringHead(urlString); err != nil {
