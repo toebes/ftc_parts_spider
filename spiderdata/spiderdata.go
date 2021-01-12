@@ -1,4 +1,4 @@
-package partdata
+package spiderdata
 
 import (
 	"sync"
@@ -58,8 +58,8 @@ type PartData struct {
 	Notes string // Any general information about the part
 }
 
-// ReferenceData - collection of part numbers and urls
-type ReferenceData struct {
+// ReferenceDataEnt - collection of part numbers and urls
+type ReferenceDataEnt struct {
 	Mu         sync.Mutex
 	Partdata   []*PartData
 	PartNumber map[string]*PartData
@@ -76,3 +76,6 @@ type ReferenceData struct {
 	StatusColumnIndex     int
 	NotesColumnIndex      int
 }
+
+// Gobilda Spreadsheet of parts and thier status
+var ReferenceData *ReferenceDataEnt
