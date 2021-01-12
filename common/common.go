@@ -7,14 +7,32 @@ import (
 	"github.com/PuerkitoBio/goquery"
 )
 
+// Category associates a name to a URL
+type Category struct {
+	name string
+	url  string
+}
+
+// CategoryMap maps a name to a Category
+type CategoryMap map[string]Category
+
+// DownloadEnt tells us whether we have downloaded an entry or not yet
+type DownloadEnt struct {
+	url  string
+	used bool
+}
+
+// DownloadEntMap maps the URLs to the DownloadEnt values
+type DownloadEntMap map[string]DownloadEnt
+
 // SpiderTarget provides the information for spidering a given vendor
 type SpiderTarget struct {
-	outfile        string
-	spreadsheetID  string
-	presets        []string
-	seed           string
-	parsePageFunc  func(ctx *fetchbot.Context, doc *goquery.Document)
-	checkMatchFunc func(partData *PartData)
+	Outfile        string
+	SpreadsheetID  string
+	Presets        []string
+	Seed           string
+	ParsePageFunc  func(ctx *fetchbot.Context, doc *goquery.Document)
+	CheckMatchFunc func(partData *PartData)
 }
 
 // PartData collects all the information about an individual part.
@@ -42,19 +60,19 @@ type PartData struct {
 
 // ReferenceData - collection of part numbers and urls
 type ReferenceData struct {
-	mu         sync.Mutex
-	partdata   []*PartData
-	partNumber map[string]*PartData
-	url        map[string]*PartData
+	Mu         sync.Mutex
+	Partdata   []*PartData
+	PartNumber map[string]*PartData
+	URL        map[string]*PartData
 
-	orderColumnIndex      int
-	sectionColumnIndex    int
-	nameColumnIndex       int
-	skuColumnIndex        int
-	urlColumnIndex        int
-	modelURLColumnIndex   int
-	extraColumnIndex      int
-	onShapeURLColumnIndex int
-	statusColumnIndex     int
-	notesColumnIndex      int
+	OrderColumnIndex      int
+	SectionColumnIndex    int
+	NameColumnIndex       int
+	SKUColumnIndex        int
+	URLColumnIndex        int
+	ModelURLColumnIndex   int
+	ExtraColumnIndex      int
+	OnshapeURLColumnIndex int
+	StatusColumnIndex     int
+	NotesColumnIndex      int
 }
