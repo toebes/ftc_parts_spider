@@ -10,6 +10,8 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/toebes/spider_gobilda/spiderdata"
+
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/sheets/v4"
@@ -74,11 +76,11 @@ func saveToken(path string, token *oauth2.Token) error {
 // LoadStatusSpreadsheet -
 // Get Part# and URL from gobilda ALL spreadsheet:
 // https://docs.google.com/spreadsheets/d/15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM/edit
-func LoadStatusSpreadsheet(spreadsheetIDPtr *string) (*ReferenceData, error) {
+func LoadStatusSpreadsheet(ctx *spiderdata.Context, spreadsheetIDPtr *string) (*spiderdata.ReferenceDataEnt, error) {
 
-	var referenceData = new(ReferenceData)
-	referenceData.partNumber = make(map[string]*PartData)
-	referenceData.url = make(map[string]*PartData)
+	var referenceData = new(spiderdata.ReferenceDataEnt)
+	referenceData.PartNumber = make(map[string]*spiderdata.PartData)
+	referenceData.URL = make(map[string]*spiderdata.PartData)
 
 	if spreadsheetIDPtr == nil {
 		fmt.Println("No SpreadsheetID was give, so no spreadsheet laoded")
@@ -113,98 +115,98 @@ func LoadStatusSpreadsheet(spreadsheetIDPtr *string) (*ReferenceData, error) {
 		return nil, errors.New("no data in Spreadsheet")
 	}
 
-	referenceData.partdata = make([]*PartData, len(response.Values))
+	referenceData.Partdata = make([]*spiderdata.PartData, len(response.Values))
 	for ii, cols := range response.Values {
 		if ii == 0 {
 			getColumnIndexes(referenceData, cols)
 			continue // header row
 		}
 
-		partdata := new(PartData)
+		partdata := new(spiderdata.PartData)
 		for jj, col := range cols {
 			switch {
-			case jj == referenceData.orderColumnIndex:
+			case jj == referenceData.OrderColumnIndex:
 				value, err := strconv.ParseUint(col.(string), 0, 32)
 				if err == nil {
 					partdata.Order = uint(value)
 				} else {
 					partdata.Order = 1
 				}
-			case jj == referenceData.sectionColumnIndex:
+			case jj == referenceData.SectionColumnIndex:
 				partdata.Section = col.(string)
-			case jj == referenceData.nameColumnIndex:
+			case jj == referenceData.NameColumnIndex:
 				partdata.Name = col.(string)
-			case jj == referenceData.skuColumnIndex:
+			case jj == referenceData.SKUColumnIndex:
 				partdata.SKU = col.(string)
-			case jj == referenceData.urlColumnIndex:
+			case jj == referenceData.URLColumnIndex:
 				partdata.URL = col.(string)
-			case jj == referenceData.modelURLColumnIndex:
+			case jj == referenceData.ModelURLColumnIndex:
 				partdata.ModelURL = col.(string)
-			case jj == referenceData.onShapeURLColumnIndex:
+			case jj == referenceData.OnshapeURLColumnIndex:
 				partdata.OnshapeURL = col.(string)
-			case jj >= referenceData.extraColumnIndex && jj <= referenceData.extraColumnIndex+6:
-				partdata.Extra[jj-referenceData.extraColumnIndex] = col.(string)
-			case jj == referenceData.statusColumnIndex:
+			case jj >= referenceData.ExtraColumnIndex && jj <= referenceData.ExtraColumnIndex+6:
+				partdata.Extra[jj-referenceData.ExtraColumnIndex] = col.(string)
+			case jj == referenceData.StatusColumnIndex:
 				partdata.Status = col.(string)
-			case jj == referenceData.notesColumnIndex:
+			case jj == referenceData.NotesColumnIndex:
 				partdata.Notes = col.(string)
 			default:
 			}
 			partdata.SpiderStatus = "Not Found by Spider"
-			referenceData.partdata[ii] = partdata
+			referenceData.Partdata[ii] = partdata
 		}
-		if excludeFromMatch(partdata) {
+		if spiderdata.ExcludeFromMatch(ctx, partdata) {
 			continue
 		}
-		dup, ok := referenceData.partNumber[partdata.SKU]
+		dup, ok := referenceData.PartNumber[partdata.SKU]
 		if ok {
 			fmt.Printf("row %d: duplicate part number '%s' found (original row %d)\n", ii, partdata.SKU, dup.Order)
 		} else {
-			referenceData.partNumber[partdata.SKU] = partdata
+			referenceData.PartNumber[partdata.SKU] = partdata
 		}
 
-		referenceData.url[partdata.URL] = partdata
+		referenceData.URL[partdata.URL] = partdata
 
 	}
 
 	return referenceData, nil
 }
-func getColumnIndexes(referenceData *ReferenceData, cols []interface{}) {
-	referenceData.orderColumnIndex = -1
-	referenceData.sectionColumnIndex = -1
-	referenceData.nameColumnIndex = -1
-	referenceData.skuColumnIndex = -1
-	referenceData.urlColumnIndex = -1
-	referenceData.modelURLColumnIndex = -1
-	referenceData.extraColumnIndex = -1
-	referenceData.onShapeURLColumnIndex = -1
-	referenceData.statusColumnIndex = -1
-	referenceData.notesColumnIndex = -1
+func getColumnIndexes(referenceData *spiderdata.ReferenceDataEnt, cols []interface{}) {
+	referenceData.OrderColumnIndex = -1
+	referenceData.SectionColumnIndex = -1
+	referenceData.NameColumnIndex = -1
+	referenceData.SKUColumnIndex = -1
+	referenceData.URLColumnIndex = -1
+	referenceData.ModelURLColumnIndex = -1
+	referenceData.ExtraColumnIndex = -1
+	referenceData.OnshapeURLColumnIndex = -1
+	referenceData.StatusColumnIndex = -1
+	referenceData.NotesColumnIndex = -1
 
 	for jj, col := range cols {
 		switch col.(string) {
 		case "Order":
-			referenceData.orderColumnIndex = jj
+			referenceData.OrderColumnIndex = jj
 		case "Section":
-			referenceData.sectionColumnIndex = jj
+			referenceData.SectionColumnIndex = jj
 		case "Name":
-			referenceData.nameColumnIndex = jj
+			referenceData.NameColumnIndex = jj
 		case "Part #":
-			referenceData.skuColumnIndex = jj
+			referenceData.SKUColumnIndex = jj
 		case "URL":
-			referenceData.urlColumnIndex = jj
+			referenceData.URLColumnIndex = jj
 		case "Model URL":
-			referenceData.modelURLColumnIndex = jj
+			referenceData.ModelURLColumnIndex = jj
 		case "Onshape URL":
-			referenceData.onShapeURLColumnIndex = jj
+			referenceData.OnshapeURLColumnIndex = jj
 		case "Extra 1":
-			referenceData.extraColumnIndex = jj
+			referenceData.ExtraColumnIndex = jj
 		case "Status":
-			referenceData.statusColumnIndex = jj
+			referenceData.StatusColumnIndex = jj
 		case "Model Status":
-			referenceData.statusColumnIndex = jj
+			referenceData.StatusColumnIndex = jj
 		case "Notes":
-			referenceData.notesColumnIndex = jj
+			referenceData.NotesColumnIndex = jj
 		default:
 		}
 	}

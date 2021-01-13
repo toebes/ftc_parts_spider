@@ -13,124 +13,52 @@ import (
 	"sync"
 	"time"
 
+	"github.com/toebes/spider_gobilda/servocitygobilda"
+	"github.com/toebes/spider_gobilda/spiderdata"
+
 	"github.com/PuerkitoBio/fetchbot"
 	"github.com/PuerkitoBio/goquery"
 )
 
-// PartData collects all the information about an individual part.
-// It is read in from the spreadsheet and updated by the spider
-type PartData struct {
-	Order   uint   // General output order for sorting the spreadsheet
-	Section string // The path where the part occurs
-	Name    string // Name of the model file
-	SKU     string // Part number/SKU
-	// CombinedName string   // This really doesn't need to be stored as it is created by concatenating Name and SKU
-	URL          string    // URL on the vendor website for the part
-	ModelURL     string    // URL on the vendor website for any 3d model
-	Extra        [7]string // Extra items associated with the part
-	OnshapeURL   string    // Location of the Onshape model
-	Status       string    // Status of the Onshape model (Done, Bundle, etc)
-	SpiderStatus string    // Status from the latest spidering.  Possible values are
-	//                            New            SKU was found on website but was not in the spreadsheet
-	//                            Not Found      SKU from spreadsheet was not found on the website
-	//                            Changed        SKU was found on website but some data didn't match.  The Notes field indicates what has changed
-	//                            Discontinued   SKU was identified as discontinued
-	//                            Same           Product is the same
-	//                      Note, when reading in from the spreadsheet, the value should be initialized to Not Found unless it already was Discontinued
-	Notes string // Any general information about the part
-}
-
-// ReferenceData - collection of part numbers and urls
-type ReferenceData struct {
-	mu         sync.Mutex
-	partdata   []*PartData
-	partNumber map[string]*PartData
-	url        map[string]*PartData
-
-	orderColumnIndex      int
-	sectionColumnIndex    int
-	nameColumnIndex       int
-	skuColumnIndex        int
-	urlColumnIndex        int
-	modelURLColumnIndex   int
-	extraColumnIndex      int
-	onShapeURLColumnIndex int
-	statusColumnIndex     int
-	notesColumnIndex      int
-}
-
 var ()
 
-type category struct {
-	name string
-	url  string
-}
-
-type categorymap map[string]category
-type downloadent struct {
-	url  string
-	used bool
-}
-type downloadentmap map[string]downloadent
-
-type spiderTarget struct {
-	outfile        string
-	spreadsheetID  string
-	presets        []string
-	seed           string
-	parsePageFunc  func(ctx *fetchbot.Context, doc *goquery.Document)
-	checkMatchFunc func(partData *PartData)
-}
-
 var (
-	targets = map[string]spiderTarget{
+	targets = map[string]*spiderdata.SpiderTarget{
 		"": {
-			"file.txt",
-			"",
-			[]string{},
-			"",
-			nilParsePage,
-			nilCheckMatch,
+			Outfile:        "file.txt",
+			SpreadsheetID:  "",
+			Presets:        []string{},
+			Seed:           "",
+			ParsePageFunc:  spiderdata.NilParsePage,
+			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
 		"Rev": {
-			"rev_robotics.txt",
-			"19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0",
-			[]string{},
-			"",
-			nilParsePage,
-			nilCheckMatch,
+			Outfile:        "rev_robotics.txt",
+			SpreadsheetID:  "19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0",
+			Presets:        []string{},
+			Seed:           "",
+			ParsePageFunc:  spiderdata.NilParsePage,
+			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
-		"servocity": servocityTarget,
-		"gobilda":   gobildaTarget,
+		"servocity": &servocitygobilda.ServocityTarget,
+		"gobilda":   &servocitygobilda.GobildaTarget,
 		"andymark": {
-			"andymark.txt",
-			"1x4SUwNaQ_X687yA6kxPELoe7ZpoCKnnCq1-OsgxUCOw",
-			[]string{},
-			"",
-			nilParsePage,
-			nilCheckMatch,
+			Outfile:        "andymark.txt",
+			SpreadsheetID:  "1x4SUwNaQ_X687yA6kxPELoe7ZpoCKnnCq1-OsgxUCOw",
+			Presets:        []string{},
+			Seed:           "",
+			ParsePageFunc:  spiderdata.NilParsePage,
+			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
 		"pitsco": {
-			"pitsco.txt",
-			"1adykd3BVYUyXsb3vC2A-lNhFNj_Q8Yzd1oXThmSwPio",
-			[]string{},
-			"",
-			nilParsePage,
-			nilCheckMatch,
+			Outfile:        "pitsco.txt",
+			SpreadsheetID:  "1adykd3BVYUyXsb3vC2A-lNhFNj_Q8Yzd1oXThmSwPio",
+			Presets:        []string{},
+			Seed:           "",
+			ParsePageFunc:  spiderdata.NilParsePage,
+			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
 	}
-	// Gobilda Spreadsheet of parts and thier status
-	referenceData *ReferenceData
-
-	// Protect access to tables
-	mu sync.Mutex
-	// Duplicates table
-	bcmap        = map[string]string{}
-	catmap       = categorymap{}
-	downloadmap  = downloadentmap{}
-	lastcategory = ""
-	linenum      = 1
-	targetConfig spiderTarget
 
 	// Command-line flags
 	target        = flag.String("target", "servocity", "Target vendor to spider")
@@ -142,28 +70,32 @@ var (
 	memStats      = flag.Duration("memstats", 0, "display memory statistics at a given interval")
 	fileout       = flag.String("out", "", "Output File")
 	spreadsheetID = flag.String("spreadsheet", "", "spider this spreadsheet")
-
-	outfile *os.File
 )
 
 func main() {
 	flag.Parse()
 
+	context := spiderdata.Context{}
+	context.G = &spiderdata.Globals{}
+	context.G.BreadcrumbMap = make(map[string]string) //map[string]string{}
+	context.G.CatMap = make(spiderdata.CategoryMap)
+	context.G.DownloadMap = make(spiderdata.DownloadEntMap)
+
 	present := false
-	targetConfig, present = targets[*target]
+	context.G.TargetConfig, present = targets[*target]
 	if !present {
-		targetConfig = targets[""]
+		context.G.TargetConfig = targets[""]
 	}
 
 	// See if we have to fill in any defaults
 	if len(*seed) == 0 {
-		*seed = targetConfig.seed
+		*seed = context.G.TargetConfig.Seed
 	}
 	if len(*fileout) == 0 {
-		*fileout = targetConfig.outfile
+		*fileout = context.G.TargetConfig.Outfile
 	}
 	if len(*spreadsheetID) == 0 {
-		*spreadsheetID = targetConfig.spreadsheetID
+		*spreadsheetID = context.G.TargetConfig.SpreadsheetID
 	}
 
 	// Parse the provided seed
@@ -172,13 +104,13 @@ func main() {
 		log.Fatal(err)
 	}
 	// Start our log file to import into Excel
-	outfile, err = os.Create(*fileout)
+	context.G.Outfile, err = os.Create(*fileout)
 	if err != nil {
 		log.Fatal(err)
 	}
-	outputHeader()
+	spiderdata.OutputHeader(&context)
 
-	referenceData, err = LoadStatusSpreadsheet(spreadsheetID)
+	context.G.ReferenceData, err = LoadStatusSpreadsheet(&context, spreadsheetID)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	}
@@ -201,8 +133,10 @@ func main() {
 				fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
 				return
 			}
+
+			muxcontext := spiderdata.Context{Cmd: ctx.Cmd, Q: ctx.Q, G: context.G}
 			// Enqueue all links as HEAD requests
-			targetConfig.parsePageFunc(ctx, doc)
+			context.G.TargetConfig.ParsePageFunc(&muxcontext, doc)
 		}))
 
 	// Handle HEAD requests for html responses coming from the source host - we don't want
@@ -244,6 +178,7 @@ func main() {
 
 	// Start processing
 	q := f.Start()
+	context.Q = q
 
 	// if a stop or cancel is requested after some duration, launch the goroutine
 	// that will stop or cancel.
@@ -264,37 +199,23 @@ func main() {
 
 	// Enqueue the seed, which is the first entry in the dup map
 
-	for _, val := range targetConfig.presets {
-		preloadQueueURL(q, val, "Initial")
+	for _, val := range context.G.TargetConfig.Presets {
+		spiderdata.EnqueURL(&context, val, "Initial")
 	}
-	preloadQueueURL(q, *seed, "Home > Competition > FTC")
+	spiderdata.EnqueURL(&context, *seed, "Home > Competition > FTC")
 
 	// Pre-queue any of the URLs that we had already found
-	for _, entry := range referenceData.partNumber {
-		preloadQueueURL(q, entry.URL, entry.Section)
+	for _, entry := range context.G.ReferenceData.PartNumber {
+		spiderdata.EnqueURL(&context, entry.URL, entry.Section)
 	}
 
 	q.Block()
 
-	for _, entry := range referenceData.partNumber {
-		outputPartData(entry)
+	for _, entry := range context.G.ReferenceData.PartNumber {
+		spiderdata.OutputPartData(&context, entry)
 	}
 }
 
-func preloadQueueURL(q *fetchbot.Queue, URL string, breadcrumb string) {
-	URL, _ = cleanURL(URL)
-	_, found := bcmap[URL]
-	if !found {
-
-		bcmap[URL] = breadcrumb
-		_, err := q.SendStringGet(URL)
-
-		fmt.Printf("Queueing: %s\n", URL)
-		if err != nil {
-			fmt.Printf("[ERR] GET %s - %s\n", URL, err)
-		}
-	}
-}
 func runMemStats(f *fetchbot.Fetcher, tick time.Duration) {
 	var mu sync.Mutex
 	var di *fetchbot.DebugInfo
@@ -365,194 +286,3 @@ func logHandler(wrapped fetchbot.Handler) fetchbot.Handler {
 		wrapped.Handle(ctx, res, err)
 	})
 }
-
-func saveCategory(name string, catclass string, url string) bool {
-	entry, found := catmap[catclass]
-	if found {
-		if entry.name != name {
-			outputError("Adding: %s name %s did not match previous name %s\n", name, catclass, entry.name)
-		}
-		if entry.url != url {
-			if entry.url == "" {
-				entry.url = url
-			} else {
-				outputError("Adding: %s Url %s did not match previous url %s\n", name, url, entry.url)
-			}
-		}
-	} else {
-		catmap[name] = category{catclass, url}
-	}
-	return true
-}
-func makeBreadCrumb(base string, toadd string) (result string) {
-	result = base
-	if toadd != "" {
-		toadd = strings.ReplaceAll(toadd, "\u00A0", " ")
-
-		if result != "" {
-			result += " > "
-		}
-		result += toadd
-	}
-	return
-}
-
-// strupURLSku removes any selector from a URL returning the cleaned string and an indication that it was removed
-func cleanURL(url string) (result string, stripped bool) {
-	stripped = false
-	// Trim off any ?sku= on the URL
-	pos := strings.Index(url, "?")
-	if pos > 0 { // note > and not >= because we don't want to get an empty URL
-		// Trim off any ?sku parameters
-		url = url[:pos]
-		stripped = true
-	}
-	result = url
-	return
-}
-
-func enqueURL(ctx *fetchbot.Context, url string, breadcrumb string) {
-	// Resolve address
-	fmt.Printf("+++Enqueue:%s\n", url)
-	u, err := ctx.Cmd.URL().Parse(url)
-	if err != nil {
-		fmt.Printf("error: resolve URL %s - %s\n", url, err)
-		return
-	}
-	// Trim off any sku= on the URL
-	urlString, _ := cleanURL(u.String())
-	_, found := bcmap[urlString]
-	if !found {
-		if _, err := ctx.Q.SendStringHead(urlString); err != nil {
-			fmt.Printf("error: enqueue head %s - %s\n", u, err)
-		} else {
-			bcmap[urlString] = breadcrumb
-		}
-	}
-}
-
-// markVisitedURL allows us to mark a page which has been received as part of a 301 redirect.
-// It prevents us from visiting a page twice (in theory)
-func markVisitedURL(ctx *fetchbot.Context, url string, breadcrumb string) {
-	u, err := ctx.Cmd.URL().Parse(url)
-	if err != nil {
-		fmt.Printf("error: resolve URL %s - %s\n", url, err)
-		return
-	}
-	_, found := bcmap[u.String()]
-	if !found {
-		bcmap[u.String()] = breadcrumb
-	}
-}
-
-// The output routines write the messages in two places.
-//  First it puts a status on stdout so that the you can see what is happening
-//  It also puts in lines in the output file so that it can be pulled into a spreadsheet
-//  Note that the lines are numbered with columns separated by a backtick because sometimes
-//  we may see tabs in the names
-
-// --------------------------------------------------------------------------------------------
-// outputHeader generates the first line of the output file with the column headers
-// Note that we use ` to separate columns because we sometimes see tabs in the names
-func outputHeader() {
-	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
-		"Order", "Section", "Name", "Part #", "Combined Name", "URL", "Model URL", "Extra 1", "Extra 2", "Extra 3", "Extra 4", "Extra 5", "Extra 6", "Extra 7", "Onshape URL", "Model Status", "Spider Status", "Notes")
-}
-
-// --------------------------------------------------------------------------------------------
-// outputCategory puts in a category line at the start of each new section
-func outputCategory(breadcrumbs string, trimlast bool) {
-	fmt.Printf("+++OptputCategory: '%v' trim:%v\n", breadcrumbs, trimlast)
-	category := breadcrumbs
-	if trimlast {
-		offset := strings.LastIndex(category, " > ")
-		if offset != -1 {
-			category = string(category[0:offset])
-		}
-	}
-	if category != lastcategory {
-		fmt.Printf("|CATEGORY:|%s\n", category)
-		// fmt.Fprintf(outfile, "%d`CATEGORY: %s\n", linenum, category)
-		lastcategory = category
-	}
-}
-
-// outputProduct takes the spidered information and generates the output structure
-func outputProduct(name string, sku string, url string, modelURL string, isDiscontinued bool, extra []string) {
-	var partData PartData
-	partData.Name = name
-	partData.SKU = sku
-	partData.URL = url
-	partData.ModelURL = modelURL
-	partData.Section = lastcategory
-	if extra != nil {
-		for i, s := range extra {
-			partData.Extra[i] = s
-		}
-	}
-	partData.Order = uint(linenum)
-	linenum++
-
-	targetConfig.checkMatchFunc(&partData)
-
-	if isDiscontinued {
-		partData.SpiderStatus = "Discontinued"
-	}
-	outputPartData(&partData)
-}
-
-// --------------------------------------------------------------------------------------------
-// outputPartData generates the product line for the output file and also prints a status message on stdout
-func outputPartData(partData *PartData) {
-
-	fmt.Printf("%s |SKU: '%v' Product: '%v' Model:'%v' on page '%v'\n", partData.SpiderStatus, partData.SKU, partData.Name, partData.ModelURL, partData.URL)
-
-	fmt.Fprintf(outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
-		partData.Order,
-		partData.Section,
-		partData.Name,
-		partData.SKU,
-		strings.TrimSpace(partData.Name+" "+partData.SKU),
-		partData.URL,
-		partData.ModelURL,
-		partData.Extra[0], partData.Extra[1], partData.Extra[2], partData.Extra[3], partData.Extra[4], partData.Extra[5], partData.Extra[6],
-		partData.OnshapeURL,
-		partData.Status,
-		partData.SpiderStatus,
-		partData.Notes)
-}
-
-// --------------------------------------------------------------------------------------------
-// outputError generates an error line in the output file (typically a missing download) and
-// also prints the status message on stdout
-func outputError(message string, args ...interface{}) {
-	fmt.Printf("***"+message, args...)
-	outmsg := fmt.Sprintf("%d`***", linenum) + message
-	fmt.Fprint(outfile, fmt.Sprintf(outmsg, args...))
-	linenum++
-}
-func excludeFromMatch(partdata *PartData) bool {
-	exclude := false
-	if strings.HasPrefix(partdata.Name, "--") {
-		exclude = true
-	}
-	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
-		exclude = true
-	}
-	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
-		exclude = true
-	}
-	if strings.HasPrefix(partdata.SKU, "(No Part Number)") {
-		exclude = true
-	}
-	if exclude {
-		partdata.Order = uint(linenum)
-		partdata.SpiderStatus = "Same"
-		outputPartData(partdata)
-		linenum++
-	}
-	return exclude
-}
-
-func nilParsePage(ctx *fetchbot.Context, doc *goquery.Document) {}
-func nilCheckMatch(partData *PartData)                          {}

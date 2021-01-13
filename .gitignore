@@ -4,4 +4,8 @@ file*.txt
 credentials.json
 token.json
 __debug_bin
-servocity.txt
+servocity*.txt
+gobilda*.txt
+andymark*.txt
+pitsco*.txt
+rev*.txt
