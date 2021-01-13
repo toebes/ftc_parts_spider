@@ -22,13 +22,44 @@ var ServocityTarget = spiderdata.SpiderTarget{
 		"https://www.servocity.com/kits/",
 	},
 	Seed:           "https://www.servocity.com/electronics/",
-	ParsePageFunc:  parseServocityPage,
-	CheckMatchFunc: checkServocityMatch,
+	ParsePageFunc:  ParseServocityPage,
+	CheckMatchFunc: CheckServocityMatch,
+
+	SectionNameDeletes: []string{
+		"Shop by Electrical Connector Style > ",
+		"Shop by Hub Style > ",
+		" Aluminum REX Shafting >",
+		" Stainless Steel D-Shafting >",
+		" > Motor Mounts for AndyMark NeveRest Motors > Motor Mounts for NeveRest Orbital Gear Motors",
+		" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV Core Hex Motor",
+		" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV UltraPlanetary Gearbox",
+		" > XL Series, 3/8\" Width Timing Belts",
+		" > XL Series, 3/8\" Width, Cut Length Timing Belts",
+	},
+	SectionAllowedMap: map[string]string{
+		"637213":   "KITS > Linear Motion Kits",
+		"ASCC8074": "HARDWARE > Lubricants",
+		"555192":   "STRUCTURE > Motor Mounts > Motor Mounts for NeveRest Classic Gear Motors",
+		"555104":   "STRUCTURE > Motor Mounts > Motor Mounts for Econ Spur Gear Motors",
+		"585074":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
+		"585073":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
+		"605638":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
+	},
+	SectionEquivalents: [][]string{
+		{"MOTION > Bearings", "MOTION > Linear Bearings"},
+		{"KITS > FTC Kits", "KITS > Linear Motion Kits"},
+		{"MOTION > Couplers > Shop by Coupler Bore", "MOTION > Couplers > "},
+		{"ELECTRONICS > Wiring > Connector Style", "ELECTRONICS > Wiring > "},
+		{"MOTION > Hubs > Servo Hubs", "MOTION > Servos & Accessories > Servo Hubs"},
+		{"MOTION > Servos & Accessories > Servos", "MOTION > Servos & Accessories"},
+		{"STRUCTURE > Adaptors", "MOTION > Hubs"},
+		{"STRUCTURE > Brackets", "STRUCTURE > X-Rail® > X-Rail® Accessories"},
+	},
 }
 
-// checkServocityMatch compares a partData to what has been captured from the spreadsheet
+// CheckServocityMatch compares a partData to what has been captured from the spreadsheet
 // Any differences are put into the notes
-func checkServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData) {
+func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData) {
 	entry, found := ctx.G.ReferenceData.PartNumber[partData.SKU]
 	if !found {
 		entry, found = ctx.G.ReferenceData.URL[partData.URL]
@@ -62,62 +93,19 @@ func checkServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData)
 			newsection := strings.ReplaceAll(partData.Section, "\u00A0", " ")
 			oldsection := strings.ReplaceAll(entry.Section, "\u00A0", " ")
 			// Then we delete some known patterns
-			deleteParts := []string{
-				"Shop by Electrical Connector Style > ",
-				"Shop by Hub Style > ",
-				" Aluminum REX Shafting >",
-				" Stainless Steel D-Shafting >",
-				" > Motor Mounts for AndyMark NeveRest Motors > Motor Mounts for NeveRest Orbital Gear Motors",
-				" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV Core Hex Motor",
-				" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV UltraPlanetary Gearbox",
-				" > XL Series, 3/8\" Width Timing Belts",
-				" > XL Series, 3/8\" Width, Cut Length Timing Belts",
-			}
-			for _, deleteStr := range deleteParts {
+			for _, deleteStr := range ctx.G.TargetConfig.SectionNameDeletes {
 				newsection = strings.ReplaceAll(newsection, deleteStr, "")
 			}
 			//  Then strip leading/trailing blanks
 			newsection = strings.TrimSpace(newsection)
-			// Special cases
-			allowedMap := map[string]string{
-				// Go Bilda
-				"1310-0016-4012": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
-				"1311-0016-1006": "MOTION > Hubs > Sonic Hubs > Thru-Hole Sonic Hubs (16mm Pattern)",
-				"1309-0016-1006": "MOTION > Hubs > Sonic Hubs > Sonic Hubs (16mm Pattern)",
-				"1310-0016-1006": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
-				"1312-0016-1006": "MOTION > Hubs > Sonic Hubs > Double Sonic Hubs (16mm Pattern)",
-				"1309-0016-0006": "MOTION > Hubs > Sonic Hubs > Sonic Hubs (16mm Pattern)",
-				"1310-0016-0008": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
-				"1310-0016-5008": "MOTION > Hubs > Hyper Hubs (16mm Pattern)",
-				"1123-0048-0048": "STRUCTURE > Pattern Plates",
-				// Servocity
-				"637213":   "KITS > Linear Motion Kits",
-				"ASCC8074": "HARDWARE > Lubricants",
-				"555192":   "STRUCTURE > Motor Mounts > Motor Mounts for NeveRest Classic Gear Motors",
-				"555104":   "STRUCTURE > Motor Mounts > Motor Mounts for Econ Spur Gear Motors",
-				"585074":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
-				"585073":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
-				"605638":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
-			}
-			// Other mappings allowed
-			equivalentMaps := [][]string{
-				{"MOTION > Bearings", "MOTION > Linear Bearings"},
-				{"KITS > FTC Kits", "KITS > Linear Motion Kits"},
-				{"MOTION > Couplers > Shop by Coupler Bore", "MOTION > Couplers > "},
-				{"ELECTRONICS > Wiring > Connector Style", "ELECTRONICS > Wiring > "},
-				{"MOTION > Hubs > Servo Hubs", "MOTION > Servos & Accessories > Servo Hubs"},
-				{"MOTION > Servos & Accessories > Servos", "MOTION > Servos & Accessories"},
-				{"STRUCTURE > Adaptors", "MOTION > Hubs"},
-				{"STRUCTURE > Brackets", "STRUCTURE > X-Rail® > X-Rail® Accessories"},
-			}
 
 			// Look for any equivalent mappings so that we end up trusting what is already in the spreadsheet.
-			propersection, matched := allowedMap[entry.SKU]
+			propersection, matched := ctx.G.TargetConfig.SectionAllowedMap[entry.SKU]
 			if len(oldsection) > len(newsection) && strings.EqualFold(newsection, oldsection[:len(newsection)]) {
 				newsection = oldsection
 			}
-
-			for _, strset := range equivalentMaps {
+			// Lastly anything which is deemed to be equivalent we will let through
+			for _, strset := range ctx.G.TargetConfig.SectionEquivalents {
 				if len(strset) == 2 {
 					if strings.HasPrefix(strings.ToUpper(newsection), strings.ToUpper(strset[0])) &&
 						strings.HasPrefix(strings.ToUpper(oldsection), strings.ToUpper(strset[1])) {
@@ -840,8 +828,8 @@ func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url 
 	return
 }
 
-// parseServocityPage parses a page and adds links to elements found within by the various processors
-func parseServocityPage(ctx *spiderdata.Context, doc *goquery.Document) {
+// ParseServocityPage parses a page and adds links to elements found within by the various processors
+func ParseServocityPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
 	url := doc.Url.String()
 	found := false

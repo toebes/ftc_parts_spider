@@ -103,6 +103,20 @@ type SpiderTarget struct {
 	Seed           string
 	ParsePageFunc  func(ctx *Context, doc *goquery.Document)
 	CheckMatchFunc func(ctx *Context, partData *PartData)
+
+	// SectionNameDeletes is the substring which can be removed from the section name safely.
+	// e.g. "Shop by Hub Style > "
+	SectionNameDeletes []string
+	// SectionAllowedMap is the mapping that defines the correct section for specific parts
+	SectionAllowedMap map[string]string
+	// Section Equivalents is the prefix string from the old to the new section so that if the
+	// start of the old section matches and the start of the new section matches, we will use the
+	// old section since we assume it was curated.
+	// For example:
+	//    {"KITS > FTC Kits", "KITS > Linear Motion Kits"},
+	// says that if the spider found it in FTC Kits, but the spreadsheet says Linear Motion Kits then we will
+	// keep it in the Linear Motion Kits
+	SectionEquivalents [][]string
 }
 
 // SaveCategory Saves a found Category URL

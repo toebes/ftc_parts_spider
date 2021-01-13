@@ -13,7 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/toebes/spider_gobilda/servocitygobilda"
+	"github.com/toebes/spider_gobilda/gobilda"
+	"github.com/toebes/spider_gobilda/servocity"
 	"github.com/toebes/spider_gobilda/spiderdata"
 
 	"github.com/PuerkitoBio/fetchbot"
@@ -40,8 +41,8 @@ var (
 			ParsePageFunc:  spiderdata.NilParsePage,
 			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
-		"servocity": &servocitygobilda.ServocityTarget,
-		"gobilda":   &servocitygobilda.GobildaTarget,
+		"servocity": &servocity.ServocityTarget,
+		"gobilda":   &gobilda.GobildaTarget,
 		"andymark": {
 			Outfile:        "andymark.txt",
 			SpreadsheetID:  "1x4SUwNaQ_X687yA6kxPELoe7ZpoCKnnCq1-OsgxUCOw",
