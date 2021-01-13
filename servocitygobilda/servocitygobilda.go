@@ -1,4 +1,4 @@
-package processservocitygobilda
+package servocitygobilda
 
 import (
 	"encoding/json"
