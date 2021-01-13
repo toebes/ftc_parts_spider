@@ -13,9 +13,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/toebes/spider_gobilda/gobilda"
-	"github.com/toebes/spider_gobilda/servocity"
-	"github.com/toebes/spider_gobilda/spiderdata"
+	"github.com/toebes/ftc_parts_spider/gobilda"
+	"github.com/toebes/ftc_parts_spider/servocity"
+	"github.com/toebes/ftc_parts_spider/spiderdata"
 
 	"github.com/PuerkitoBio/fetchbot"
 	"github.com/PuerkitoBio/goquery"

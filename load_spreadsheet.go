@@ -10,7 +10,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/toebes/spider_gobilda/spiderdata"
+	"github.com/toebes/ftc_parts_spider/spiderdata"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
