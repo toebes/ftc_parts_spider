@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/toebes/ftc_parts_spider/gobilda"
+	"github.com/toebes/ftc_parts_spider/revrobotics"
 	"github.com/toebes/ftc_parts_spider/servocity"
 	"github.com/toebes/ftc_parts_spider/spiderdata"
 
@@ -33,14 +34,7 @@ var (
 			ParsePageFunc:  spiderdata.NilParsePage,
 			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
-		"Rev": {
-			Outfile:        "rev_robotics.txt",
-			SpreadsheetID:  "19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0",
-			Presets:        []string{},
-			Seed:           "",
-			ParsePageFunc:  spiderdata.NilParsePage,
-			CheckMatchFunc: spiderdata.NilCheckMatch,
-		},
+		"Rev":       &revrobotics.RevRoboticsTarget,
 		"servocity": &servocity.ServocityTarget,
 		"gobilda":   &gobilda.GobildaTarget,
 		"andymark": {
