@@ -1,4 +1,4 @@
-module github.com/toebes/spider_gobilda
+module github.com/toebes/ftc_parts_spider
 
 go 1.15
 
