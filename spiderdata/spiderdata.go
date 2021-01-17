@@ -86,6 +86,7 @@ type Globals struct {
 	Linenum       int
 	TargetConfig  *SpiderTarget
 	Outfile       *os.File
+	SingleOnly    bool
 }
 
 // Context provides the globals used everywhere

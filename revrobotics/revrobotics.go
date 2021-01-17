@@ -193,7 +193,7 @@ func CheckRevRoboticsMatch(ctx *spiderdata.Context, partData *spiderdata.PartDat
 			partData.Status = entry.Status
 		}
 	} else {
-		partData.SpiderStatus = "Not Found"
+		partData.SpiderStatus = "New"
 		partData.Status = "Not Done"
 	}
 
@@ -278,7 +278,9 @@ func processSubCategory(ctx *spiderdata.Context, breadcrumbs string, categorypro
 			})
 			fmt.Printf("Found item name=%s url=%s\n", elemtext, url)
 			found = true
-			spiderdata.EnqueURL(ctx, url, breadcrumbs)
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, url, breadcrumbs)
+			}
 		})
 	})
 	return
@@ -381,7 +383,10 @@ func processProductGrid(ctx *spiderdata.Context, breadcrumbs string, url string,
 			product := a.Text()
 			fmt.Printf("**ProductGrid Found item name=%s url=%s\n", product, urlloc)
 			found = true
-			spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+			if !ctx.G.SingleOnly {
+
+				spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+			}
 		})
 	}
 	return
@@ -398,7 +403,9 @@ func processQaatcList(ctx *spiderdata.Context, breadcrumbs string, url string, p
 			product := a.Text()
 			fmt.Printf("**processQaatcList Found item name=%s url=%s\n", product, urlloc)
 			found = true
-			spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+			}
 		})
 	}
 	return
@@ -706,6 +713,56 @@ func processJavascriptSelector(ctx *spiderdata.Context, breadcrumbs string, url 
 	return
 }
 
+// --------------------------------------------------------------------------------------------
+// processLazyLoad finds all the lazy loaded sub pages
+func processLazyLoad(ctx *spiderdata.Context, breadcrumbs string, url string, js *goquery.Selection) (found bool) {
+	jstext := js.Text()
+	pos := strings.Index(jstext, "window.stencilBootstrap(")
+	if pos > 0 {
+		// fmt.Printf("Found Bootstrap: %v", jstext)
+		pos := strings.Index(jstext, "subcategories")
+		if pos > 0 {
+			jstext = jstext[pos:]
+			pos = strings.Index(jstext, ":[")
+			if pos > 0 {
+				pos2 := strings.Index(jstext, "],")
+				// fmt.Printf("Found Javascript pos=%d pos2=%d '%s'\n", pos, pos2, jstext[pos:pos2])
+				if pos2 > 0 {
+					// //         <script>
+					// // Exported in app.js
+					// window.stencilBootstrap("category", "{\"categoryProductsPerPage\":50,
+					// 				   \"subcategoryURLs\":[\"https://www.gobilda.com/chain/\",
+					// 				   \"https://www.gobilda.com/set-screw-sprockets/\",
+					// 				   \"https://www.gobilda.com/14mm-bore-aluminum-hub-mount-sprockets/\",
+					// 				   \"https://www.gobilda.com/14mm-bore-plastic-hub-mount-sprockets/\",
+					// 				   \"https://www.gobilda.com/32mm-bore-aluminum-hub-mount-sprockets/\"],
+					// 				   \"template\":\"pages/custom/category/category-stacked-shortest-name\",
+					// 				   \"themeSettings\":{\"alert-backgroundColor\":\"#ffffff\",\"alert-color\":\"#333333\",\"alert-color-alt\":\"#ffffff\",\"applePay-button\":\"black\",\"blockquote-cite-font-color\":\"#999999\",\"blog_size\":\"190x250\",\"body-bg\":\"#ffffff\",\"body-font\":\"Google_Roboto_300\",\"brand_size\":\"190x250\",\"brandpage_products_per_page\":12,\"button--default-borderColor\":\"#cccccc\",\"button--default-borderColorActive\":\"#757575\",\"button--default-borderColorHover\":\"#999999\",\"button--default-color\":\"#666666\",\"button--default-colorActive\":\"#000000\",\"button--default-colorHover\":\"#333333\",\"button--disabled-backgroundColor\":\"#cccccc\",\"button--disabled-borderColor\":\"transparent\",\"button--disabled-color\":\"#ffffff\",\"button--icon-svg-color\":\"#757575\",\"button--primary-backgroundColor\":\"#444444\",\"button--primary-backgroundColorActive\":\"#000000\",\"button--primary-backgroundColorHover\":\"#666666\",\"button--primary-color\":\"#ffffff\",\"button--primary-colorActive\":\"#ffffff\",\"button--primary-colorHover\":\"#ffffff\",\"card--alternate-backgroundColor\":\"#ffffff\",\"card--alternate-borderColor\":\"#ffffff\",\"card--alternate-color--hover\":\"#ffffff\",\"card-figcaption-button-background\":\"#ffffff\",\"card-figcaption-button-color\":\"#333333\",\"card-title-color\":\"#333333\",\"card-title-color-hover\":\"#757575\",\"carousel-arrow-bgColor\":\"#ffffff\",\"carousel-arrow-borderColor\":\"#ffffff\",\"carousel-arrow-color\":\"#999999\",\"carousel-bgColor\":\"#ffffff\",\"carousel-description-color\":\"#333333\",\"carousel-dot-bgColor\":\"#ffffff\",\"carousel-dot-color\":\"#333333\",\"carousel-dot-color-active\":\"#757575\",\"carousel-title-color\":\"#444444\",\"categorypage_products_per_page\":50,\"checkRadio-backgroundColor\":\"#ffffff\",\"checkRadio-borderColor\":\"#cccccc\",\"checkRadio-color\":\"#333333\",\"color-black\":\"#ffffff\",\"color-error\":\"#cc4749\",\"color-errorLight\":\"#ffdddd\",\"color-grey\":\"#999999\",\"color-greyDark\":\"#666666\",\"color-greyDarker\":\"#333333\",\"color-greyDarkest\":\"#000000\",\"color-greyLight\":\"#999999\",\"color-greyLighter\":\"#cccccc\",\"color-greyLightest\":\"#e5e5e5\",\"color-greyMedium\":\"#757575\",\"color-info\":\"#666666\",\"color-infoLight\":\"#dfdfdf\",\"color-primary\":\"#757575\",\"color-primaryDark\":\"#666666\",\"color-primaryDarker\":\"#333333\",\"color-primaryLight\":\"#999999\",\"color-secondary\":\"#ffffff\",\"color-secondaryDark\":\"#e5e5e5\",\"color-secondaryDarker\":\"#cccccc\",\"color-success\":\"#008a06\",\"color-successLight\":\"#d5ffd8\",\"color-textBase\":\"#333333\",\"color-textBase--active\":\"#757575\",\"color-textBase--hover\":\"#757575\",\"color-textHeading\":\"#444444\",\"color-textLink\":\"#333333\",\"color-textLink--active\":\"#757575\",\"color-textLink--hover\":\"#757575\",\"color-textSecondary\":\"#757575\",\"color-textSecondary--active\":\"#333333\",\"color-textSecondary--hover\":\"#333333\",\"color-warning\":\"#f1a500\",\"color-warningLight\":\"#fffdea\",\"color-white\":\"#ffffff\",\"color-whitesBase\":\"#e5e5e5\",\"color_actobotics-green\":\"#43b02a\",\"color_badge_product_sale_badges\":\"#007dc6\",\"color_gobilda-grey\":\"#2c2c2c\",\"color_gobilda-yellow\":\"#fad000\",\"color_hover_product_sale_badges\":\"#000000\",\"color_robotzone-red\":\"#da291c\",\"color_servocity-blue\":\"#0077c8\",\"color_text_product_sale_badges\":\"#ffffff\",\"container-border-global-color-base\":\"#e5e5e5\",\"container-fill-base\":\"#ffffff\",\"container-fill-dark\":\"#e5e5e5\",\"default_image_brand\":\"/assets/img/BrandDefault.gif\",\"default_image_gift_certificate\":\"/assets/img/GiftCertificate.png\",\"default_image_product\":\"/assets/img/ProductDefault.gif\",\"dropdown--quickSearch-backgroundColor\":\"#e5e5e5\",\"fontSize-h1\":28,\"fontSize-h2\":25,\"fontSize-h3\":22,\"fontSize-h4\":20,\"fontSize-h5\":15,\"fontSize-h6\":13,\"fontSize-root\":14,\"footer-backgroundColor\":\"#ffffff\",\"form-label-font-color\":\"#666666\",\"gallery_size\":\"300x300\",\"geotrust_ssl_common_name\":\"\",\"geotrust_ssl_seal_size\":\"M\",\"header-backgroundColor\":\"#ffffff\",\"headings-font\":\"Google_Montserrat_400\",\"hide_content_navigation\":false,\"homepage_blog_posts_count\":3,\"homepage_featured_products_column_count\":6,\"homepage_featured_products_count\":8,\"homepage_new_products_column_count\":6,\"homepage_new_products_count\":12,\"homepage_show_carousel\":true,\"homepage_stretch_carousel_images\":false,\"homepage_top_products_column_count\":6,\"homepage_top_products_count\":8,\"icon-color\":\"#757575\",\"icon-color-hover\":\"#999999\",\"icon-ratingEmpty\":\"#cccccc\",\"icon-ratingFull\":\"#757575\",\"input-bg-color\":\"#ffffff\",\"input-border-color\":\"#cccccc\",\"input-border-color-active\":\"#999999\",\"input-disabled-bg\":\"#ffffff\",\"input-font-color\":\"#666666\",\"label-backgroundColor\":\"#cccccc\",\"label-color\":\"#ffffff\",\"loadingOverlay-backgroundColor\":\"#ffffff\",\"logo-font\":\"Google_Oswald_300\",\"logo-position\":\"center\",\"logo_fontSize\":28,\"logo_size\":\"250x100\",\"medium_size\":\"800x800\",\"navPages-color\":\"#333333\",\"navPages-color-hover\":\"#757575\",\"navPages-subMenu-backgroundColor\":\"#e5e5e5\",\"navPages-subMenu-separatorColor\":\"#cccccc\",\"navUser-color\":\"#333333\",\"navUser-color-hover\":\"#757575\",\"navUser-dropdown-backgroundColor\":\"#ffffff\",\"navUser-dropdown-borderColor\":\"#cccccc\",\"navUser-indicator-backgroundColor\":\"#333333\",\"navigation_design\":\"simple\",\"optimizedCheckout-backgroundImage\":\"\",\"optimizedCheckout-backgroundImage-size\":\"1000x400\",\"optimizedCheckout-body-backgroundColor\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-backgroundColor\":\"#333333\",\"optimizedCheckout-buttonPrimary-backgroundColorActive\":\"#000000\",\"optimizedCheckout-buttonPrimary-backgroundColorDisabled\":\"#cccccc\",\"optimizedCheckout-buttonPrimary-backgroundColorHover\":\"#666666\",\"optimizedCheckout-buttonPrimary-borderColor\":\"#cccccc\",\"optimizedCheckout-buttonPrimary-borderColorActive\":\"transparent\",\"optimizedCheckout-buttonPrimary-borderColorDisabled\":\"transparent\",\"optimizedCheckout-buttonPrimary-borderColorHover\":\"transparent\",\"optimizedCheckout-buttonPrimary-color\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-colorActive\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-colorDisabled\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-colorHover\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-font\":\"Google_Roboto_300\",\"optimizedCheckout-buttonSecondary-backgroundColor\":\"#ffffff\",\"optimizedCheckout-buttonSecondary-backgroundColorActive\":\"#e5e5e5\",\"optimizedCheckout-buttonSecondary-backgroundColorHover\":\"#f5f5f5\",\"optimizedCheckout-buttonSecondary-borderColor\":\"#cccccc\",\"optimizedCheckout-buttonSecondary-borderColorActive\":\"#757575\",\"optimizedCheckout-buttonSecondary-borderColorHover\":\"#999999\",\"optimizedCheckout-buttonSecondary-color\":\"#333333\",\"optimizedCheckout-buttonSecondary-colorActive\":\"#000000\",\"optimizedCheckout-buttonSecondary-colorHover\":\"#333333\",\"optimizedCheckout-buttonSecondary-font\":\"Google_Karla_400\",\"optimizedCheckout-colorFocus\":\"#4496f6\",\"optimizedCheckout-contentPrimary-color\":\"#333333\",\"optimizedCheckout-contentPrimary-font\":\"Google_Roboto_300\",\"optimizedCheckout-contentSecondary-color\":\"#757575\",\"optimizedCheckout-contentSecondary-font\":\"Google_Roboto_300\",\"optimizedCheckout-discountBanner-backgroundColor\":\"#e5e5e5\",\"optimizedCheckout-discountBanner-iconColor\":\"#333333\",\"optimizedCheckout-discountBanner-textColor\":\"#333333\",\"optimizedCheckout-form-textColor\":\"#666666\",\"optimizedCheckout-formChecklist-backgroundColor\":\"#ffffff\",\"optimizedCheckout-formChecklist-backgroundColorSelected\":\"#f5f5f5\",\"optimizedCheckout-formChecklist-borderColor\":\"#cccccc\",\"optimizedCheckout-formChecklist-color\":\"#333333\",\"optimizedCheckout-formField-backgroundColor\":\"#ffffff\",\"optimizedCheckout-formField-borderColor\":\"#cccccc\",\"optimizedCheckout-formField-errorColor\":\"#d14343\",\"optimizedCheckout-formField-inputControlColor\":\"#476bef\",\"optimizedCheckout-formField-placeholderColor\":\"#999999\",\"optimizedCheckout-formField-shadowColor\":\"#e5e5e5\",\"optimizedCheckout-formField-textColor\":\"#333333\",\"optimizedCheckout-header-backgroundColor\":\"#f5f5f5\",\"optimizedCheckout-header-borderColor\":\"#dddddd\",\"optimizedCheckout-header-textColor\":\"#333333\",\"optimizedCheckout-headingPrimary-color\":\"#333333\",\"optimizedCheckout-headingPrimary-font\":\"Google_Montserrat_400\",\"optimizedCheckout-headingSecondary-color\":\"#333333\",\"optimizedCheckout-headingSecondary-font\":\"Google_Montserrat_400\",\"optimizedCheckout-link-color\":\"#476bef\",\"optimizedCheckout-link-font\":\"Google_Karla_400\",\"optimizedCheckout-link-hoverColor\":\"#002fe1\",\"optimizedCheckout-loadingToaster-backgroundColor\":\"#333333\",\"optimizedCheckout-loadingToaster-textColor\":\"#ffffff\",\"optimizedCheckout-logo\":\"\",\"optimizedCheckout-logo-position\":\"left\",\"optimizedCheckout-logo-size\":\"250x100\",\"optimizedCheckout-orderSummary-backgroundColor\":\"#ffffff\",\"optimizedCheckout-orderSummary-borderColor\":\"#dddddd\",\"optimizedCheckout-show-backgroundImage\":false,\"optimizedCheckout-show-logo\":\"none\",\"optimizedCheckout-step-backgroundColor\":\"#757575\",\"optimizedCheckout-step-borderColor\":\"#dddddd\",\"optimizedCheckout-step-textColor\":\"#ffffff\",\"overlay-backgroundColor\":\"#333333\",\"pace-progress-backgroundColor\":\"#999999\",\"price_ranges\":true,\"product_list_display_mode\":\"grid\",\"product_sale_badges\":\"none\",\"product_size\":\"500x659\",\"productgallery_size\":\"318x318\",\"productgallery_size_three_column\":\"712x712\",\"productpage_related_products_count\":100,\"productpage_reviews_count\":9,\"productpage_similar_by_views_count\":10,\"productpage_videos_count\":8,\"productthumb_size\":\"100x100\",\"productview_thumb_size\":\"50x50\",\"restrict_to_login\":false,\"searchpage_products_per_page\":12,\"select-arrow-color\":\"#757575\",\"select-bg-color\":\"#ffffff\",\"shop_by_brand_show_footer\":true,\"shop_by_price_visible\":true,\"show_accept_amex\":false,\"show_accept_discover\":false,\"show_accept_mastercard\":false,\"show_accept_paypal\":false,\"show_accept_visa\":false,\"show_copyright_footer\":true,\"show_powered_by\":true,\"show_product_details_tabs\":true,\"show_product_dimensions\":false,\"show_product_quick_view\":true,\"show_product_weight\":true,\"social_icon_placement_bottom\":\"bottom_none\",\"social_icon_placement_top\":false,\"spinner-borderColor-dark\":\"#999999\",\"spinner-borderColor-light\":\"#ffffff\",\"storeName-color\":\"#333333\",\"swatch_option_size\":\"22x22\",\"thumb_size\":\"100x100\",\"zoom_size\":\"1280x1280\"},\"genericError\":\"Oops! Something went wrong.\",\"maintenanceMode\":{\"header\":null,\"message\":null,\"notice\":null,\"password\":null,\"securePath\":\"https://www.gobilda.com\"},\"urls\":{\"account\":{\"add_address\":\"/account.php?action=add_shipping_address\",\"addresses\":\"/account.php?action=address_book\",\"details\":\"/account.php?action=account_details\",\"inbox\":\"/account.php?action=inbox\",\"index\":\"/account.php\",\"orders\":{\"all\":\"/account.php?action=order_status\",\"completed\":\"/account.php?action=view_orders\",\"save_new_return\":\"/account.php?action=save_new_return\"},\"recent_items\":\"/account.php?action=recent_items\",\"returns\":\"/account.php?action=view_returns\",\"send_message\":\"/account.php?action=send_message\",\"update_action\":\"/account.php?action=update_account\",\"wishlists\":{\"add\":\"/wishlist.php?action=addwishlist\",\"all\":\"/wishlist.php\",\"delete\":\"/wishlist.php?action=deletewishlist\",\"edit\":\"/wishlist.php?action=editwishlist\"}},\"auth\":{\"check_login\":\"/login.php?action=check_login\",\"create_account\":\"/login.php?action=create_account\",\"forgot_password\":\"/login.php?action=reset_password\",\"login\":\"/login.php\",\"logout\":\"/login.php?action=logout\",\"save_new_account\":\"/login.php?action=save_new_account\",\"save_new_password\":\"/login.php?action=save_new_password\",\"send_password_email\":\"/login.php?action=send_password_email\"},\"brands\":\"https://www.gobilda.com/brands/\",\"cart\":\"/cart.php\",\"checkout\":{\"multiple_address\":\"/checkout.php?action=multiple\",\"single_address\":\"/checkout\"},\"compare\":\"/compare\",\"contact_us_submit\":\"/pages.php?action=sendContactForm\",\"gift_certificate\":{\"balance\":\"/giftcertificates.php?action=balance\",\"purchase\":\"/giftcertificates.php\",\"redeem\":\"/giftcertificates.php?action=redeem\"},\"home\":\"https://www.gobilda.com/\",\"product\":{\"post_review\":\"/postreview.php\"},\"rss\":{\"blog\":\"/rss.php?action=newblogs&type=rss\",\"blog_atom\":\"/rss.php?action=newblogs&type=atom\",\"products\":[]},\"search\":\"/search.php\",\"sitemap\":\"/sitemap.php\",\"subscribe\":{\"action\":\"/subscribe.php\"}}}").load();
+					// </script>
+					jstext = strings.ReplaceAll(jstext[pos+2:pos2], "\\\"", "\"")
+					urlset := strings.Split(jstext, ",")
+					for _, url := range urlset {
+						pos3 := strings.Index(url, "\"url\":\"")
+						if pos3 >= 0 {
+							urlpart := url[pos3+7:]
+							pos4 := strings.Index(urlpart, "\"")
+							if pos4 > 0 {
+								urlpart = urlpart[:pos4]
+							}
+							urlpart = strings.Trim(urlpart, "\"")
+							found = true
+							if !ctx.G.SingleOnly {
+								spiderdata.EnqueURL(ctx, urlpart, breadcrumbs)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	return
+}
+
 func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url string, productname string, root *goquery.Selection, table *goquery.Selection) (found bool) {
 	found = false
 	downloadurls := findAllDownloads(ctx, url, root)
@@ -751,6 +808,11 @@ func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 			}
 		})
 	}
+	doc.Find("script").Each(func(i int, product *goquery.Selection) {
+		if processLazyLoad(ctx, breadcrumbs, url, product) {
+			found = true
+		}
+	})
 	if !found {
 		doc.Find("ul.qaatc__list").Each(func(i int, product *goquery.Selection) {
 			if processQaatcList(ctx, breadcrumbs, url, product) {

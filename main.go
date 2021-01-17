@@ -34,7 +34,7 @@ var (
 			ParsePageFunc:  spiderdata.NilParsePage,
 			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
-		"Rev":       &revrobotics.RevRoboticsTarget,
+		"rev":       &revrobotics.RevRoboticsTarget,
 		"servocity": &servocity.ServocityTarget,
 		"gobilda":   &gobilda.GobildaTarget,
 		"andymark": {
@@ -56,8 +56,8 @@ var (
 	}
 
 	// Command-line flags
-	target        = flag.String("target", "servocity", "Target vendor to spider")
-	seed          = flag.String("seed", "", "seed URL")
+	target        = flag.String("target", "rev", "Target vendor to spider")
+	seed          = flag.String("seed", "https://www.revrobotics.com/xt30-extension-cable-2-pack/", "seed URL")
 	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
 	cancelAtURL   = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
 	stopAfter     = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
@@ -65,6 +65,7 @@ var (
 	memStats      = flag.Duration("memstats", 0, "display memory statistics at a given interval")
 	fileout       = flag.String("out", "", "Output File")
 	spreadsheetID = flag.String("spreadsheet", "", "spider this spreadsheet")
+	singleOnly    = flag.Bool("single", true, "Only process the seed and don't follow any additional links")
 )
 
 func main() {
@@ -75,6 +76,7 @@ func main() {
 	context.G.BreadcrumbMap = make(map[string]string) //map[string]string{}
 	context.G.CatMap = make(spiderdata.CategoryMap)
 	context.G.DownloadMap = make(spiderdata.DownloadEntMap)
+	context.G.SingleOnly = *singleOnly
 
 	present := false
 	context.G.TargetConfig, present = targets[*target]
@@ -193,15 +195,17 @@ func main() {
 	}
 
 	// Enqueue the seed, which is the first entry in the dup map
-
-	for _, val := range context.G.TargetConfig.Presets {
-		spiderdata.EnqueURL(&context, val, "Initial")
-	}
 	spiderdata.EnqueURL(&context, *seed, "Home > Competition > FTC")
 
-	// Pre-queue any of the URLs that we had already found
-	for _, entry := range context.G.ReferenceData.PartNumber {
-		spiderdata.EnqueURL(&context, entry.URL, entry.Section)
+	if !context.G.SingleOnly {
+		for _, val := range context.G.TargetConfig.Presets {
+			spiderdata.EnqueURL(&context, val, "Initial")
+		}
+
+		// Pre-queue any of the URLs that we had already found
+		for _, entry := range context.G.ReferenceData.PartNumber {
+			spiderdata.EnqueURL(&context, entry.URL, entry.Section)
+		}
 	}
 
 	q.Block()

@@ -198,7 +198,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData)
 			partData.Status = entry.Status
 		}
 	} else {
-		partData.SpiderStatus = "Not Found"
+		partData.SpiderStatus = "New"
 		partData.Status = "Not Done"
 	}
 
