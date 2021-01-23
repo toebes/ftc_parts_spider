@@ -1,4 +1,4 @@
-package representation
+package partcatalog
 
 // PartData - detailed information about an individual part in our part catalog
 type PartData struct {
