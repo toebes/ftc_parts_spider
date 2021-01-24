@@ -1,4 +1,4 @@
-package main
+package partcatalog
 
 import (
 	"context"
@@ -10,13 +10,12 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/toebes/ftc_parts_spider/spiderdata"
-
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/sheets/v4"
 )
 
+// https://developers.google.com/sheets/api/quickstart/go
 // Retrieve a token, saves the token, then returns the generated client.
 func getClient(config *oauth2.Config) *http.Client {
 	// The file token.json stores the user's access and refresh tokens, and is
@@ -38,9 +37,12 @@ func getTokenFromWeb(config *oauth2.Config) (*oauth2.Token, error) {
 		"authorization code: \n%v\n", authURL)
 
 	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		return nil, fmt.Errorf("Unable to read authorization code. Caused by: %v", err)
-	}
+	/*
+		if _, err := fmt.Scan(&authCode); err != nil {
+			fmt.Println("visit https://developers.google.com/sheets/api/quickstart/go")
+			return nil, fmt.Errorf("Unable to read authorization code. Caused by: %v", err)
+		}*/
+	authCode = "4/1AY0e-g4Kdfb5TzWPaF0SeF6dCUuDozGK7PfrDpB92msXpurmitZ195lPMpM"
 
 	tok, err := config.Exchange(context.TODO(), authCode)
 	if err != nil {
@@ -73,14 +75,12 @@ func saveToken(path string, token *oauth2.Token) error {
 	return nil
 }
 
-// LoadStatusSpreadsheet -
+// LoadPartCatalog -
 // Get Part# and URL from gobilda ALL spreadsheet:
 // https://docs.google.com/spreadsheets/d/15XT3v9O0VOmyxqXrgR8tWDyb_CRLQT5-xPfWPdbx4RM/edit
-func LoadStatusSpreadsheet(ctx *spiderdata.Context, spreadsheetIDPtr *string) (*spiderdata.ReferenceDataEnt, error) {
+func LoadPartCatalog(spreadsheetIDPtr *string, excludeFilter func(*PartData) bool) (*PartCatalogData, error) {
 
-	var referenceData = new(spiderdata.ReferenceDataEnt)
-	referenceData.PartNumber = make(map[string]*spiderdata.PartData)
-	referenceData.URL = make(map[string]*spiderdata.PartData)
+	var referenceData = NewPartCatalogData()
 
 	if spreadsheetIDPtr == nil {
 		fmt.Println("No SpreadsheetID was give, so no spreadsheet laoded")
@@ -115,63 +115,53 @@ func LoadStatusSpreadsheet(ctx *spiderdata.Context, spreadsheetIDPtr *string) (*
 		return nil, errors.New("no data in Spreadsheet")
 	}
 
-	referenceData.Partdata = make([]*spiderdata.PartData, len(response.Values))
+	referenceData.Partdata = make([]*PartData, 0, len(response.Values))
 	for ii, cols := range response.Values {
 		if ii == 0 {
 			getColumnIndexes(referenceData, cols)
 			continue // header row
 		}
-
-		partdata := new(spiderdata.PartData)
-		for jj, col := range cols {
-			switch {
-			case jj == referenceData.OrderColumnIndex:
-				value, err := strconv.ParseUint(col.(string), 0, 32)
-				if err == nil {
-					partdata.Order = uint(value)
-				} else {
-					partdata.Order = 1
-				}
-			case jj == referenceData.SectionColumnIndex:
-				partdata.Section = col.(string)
-			case jj == referenceData.NameColumnIndex:
-				partdata.Name = col.(string)
-			case jj == referenceData.SKUColumnIndex:
-				partdata.SKU = col.(string)
-			case jj == referenceData.URLColumnIndex:
-				partdata.URL = col.(string)
-			case jj == referenceData.ModelURLColumnIndex:
-				partdata.ModelURL = col.(string)
-			case jj == referenceData.OnshapeURLColumnIndex:
-				partdata.OnshapeURL = col.(string)
-			case jj >= referenceData.ExtraColumnIndex && jj <= referenceData.ExtraColumnIndex+6:
-				partdata.Extra[jj-referenceData.ExtraColumnIndex] = col.(string)
-			case jj == referenceData.StatusColumnIndex:
-				partdata.Status = col.(string)
-			case jj == referenceData.NotesColumnIndex:
-				partdata.Notes = col.(string)
-			default:
-			}
-			partdata.SpiderStatus = "Not Found by Spider"
-			referenceData.Partdata[ii] = partdata
-		}
-		if spiderdata.ExcludeFromMatch(ctx, partdata) {
-			continue
-		}
-		dup, ok := referenceData.PartNumber[partdata.SKU]
-		if ok {
-			fmt.Printf("row %d: duplicate part number '%s' found (original row %d)\n", ii, partdata.SKU, dup.Order)
-		} else {
-			referenceData.PartNumber[partdata.SKU] = partdata
-		}
-
-		referenceData.URL[partdata.URL] = partdata
-
+		partdata := getPartData(referenceData, cols)
+		referenceData.addPart(partdata, excludeFilter)
 	}
-
 	return referenceData, nil
 }
-func getColumnIndexes(referenceData *spiderdata.ReferenceDataEnt, cols []interface{}) {
+func getPartData(referenceData *PartCatalogData, cols []interface{}) *PartData {
+	partdata := new(PartData)
+	for jj, col := range cols {
+		switch {
+		case jj == referenceData.OrderColumnIndex:
+			value, err := strconv.ParseUint(col.(string), 0, 32)
+			if err == nil {
+				partdata.Order = uint(value)
+			} else {
+				partdata.Order = 1
+			}
+		case jj == referenceData.SectionColumnIndex:
+			partdata.Section = col.(string)
+		case jj == referenceData.NameColumnIndex:
+			partdata.Name = col.(string)
+		case jj == referenceData.SKUColumnIndex:
+			partdata.SKU = col.(string)
+		case jj == referenceData.URLColumnIndex:
+			partdata.URL = col.(string)
+		case jj == referenceData.ModelURLColumnIndex:
+			partdata.ModelURL = col.(string)
+		case jj == referenceData.OnshapeURLColumnIndex:
+			partdata.OnshapeURL = col.(string)
+		case jj >= referenceData.ExtraColumnIndex && jj <= referenceData.ExtraColumnIndex+6:
+			partdata.Extra[jj-referenceData.ExtraColumnIndex] = col.(string)
+		case jj == referenceData.StatusColumnIndex:
+			partdata.Status = col.(string)
+		case jj == referenceData.NotesColumnIndex:
+			partdata.Notes = col.(string)
+		default:
+		}
+		partdata.SpiderStatus = PartNotFoundBySpider
+	}
+	return partdata
+}
+func getColumnIndexes(referenceData *PartCatalogData, cols []interface{}) {
 	referenceData.OrderColumnIndex = -1
 	referenceData.SectionColumnIndex = -1
 	referenceData.NameColumnIndex = -1

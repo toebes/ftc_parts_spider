@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/toebes/ftc_parts_spider/gobilda"
+	"github.com/toebes/ftc_parts_spider/partcatalog"
 	"github.com/toebes/ftc_parts_spider/revrobotics"
 	"github.com/toebes/ftc_parts_spider/servocity"
 	"github.com/toebes/ftc_parts_spider/spiderdata"
@@ -56,9 +57,12 @@ var (
 	}
 
 	// Command-line flags
-	target        = flag.String("target", "rev", "Target vendor to spider")
-	seed          = flag.String("seed", "https://www.revrobotics.com/xt30-extension-cable-2-pack/", "seed URL")
-	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
+	target      = flag.String("target", "rev", "Target vendor to spider")
+	seed        = flag.String("seed", "https://www.revrobotics.com/xt30-extension-cable-2-pack/", "seed URL")
+	cancelAfter = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
+	//target        = flag.String("target", "gobilda", "Target vendor to spider")
+	//seed          = flag.String("seed", "https://www.gobilda.com/5202-series-yellow-jacket-planetary-gear-motor-19-2-1-ratio-312-rpm-3-3-5v-encoder/", "seed URL")
+	//cancelAfter   = flag.Duration("cancelafter", 5, "automatically cancel the fetchbot after a given time")
 	cancelAtURL   = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
 	stopAfter     = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
 	stopAtURL     = flag.String("stopat", "", "automatically stop the fetchbot at a given URL")
@@ -67,6 +71,21 @@ var (
 	spreadsheetID = flag.String("spreadsheet", "", "spider this spreadsheet")
 	singleOnly    = flag.Bool("single", true, "Only process the seed and don't follow any additional links")
 )
+
+// ExcludeFromMatch checks to see whether something should be spidered
+func ExcludeFromMatch(partdata *partcatalog.PartData) bool {
+	exclude := false
+	if strings.HasPrefix(partdata.Name, "--") {
+		exclude = true
+	}
+	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
+		exclude = true
+	}
+	if strings.HasPrefix(partdata.SKU, "(No Part Number)") {
+		exclude = true
+	}
+	return exclude
+}
 
 func main() {
 	flag.Parse()
@@ -107,9 +126,16 @@ func main() {
 	}
 	spiderdata.OutputHeader(&context)
 
-	context.G.ReferenceData, err = LoadStatusSpreadsheet(&context, spreadsheetID)
+	context.G.ReferenceData, err = partcatalog.LoadPartCatalog(spreadsheetID, ExcludeFromMatch)
 	if err != nil {
 		fmt.Printf("%v\n", err)
+	}
+
+	if context.G.ReferenceData != nil {
+		for _, partdata := range context.G.ReferenceData.ExcludeFromSearch {
+			partdata.SpiderStatus = partcatalog.UnchangedPart
+			spiderdata.OutputPartData(&context, partdata)
+		}
 	}
 
 	// Create the muxer
@@ -211,7 +237,9 @@ func main() {
 	q.Block()
 
 	for _, entry := range context.G.ReferenceData.PartNumber {
-		spiderdata.OutputPartData(&context, entry)
+		if entry.SpiderStatus == partcatalog.PartNotFoundBySpider {
+			spiderdata.OutputPartData(&context, entry)
+		}
 	}
 }
 

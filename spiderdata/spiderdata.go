@@ -8,6 +8,7 @@ import (
 
 	"github.com/PuerkitoBio/fetchbot"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/toebes/ftc_parts_spider/partcatalog"
 )
 
 // Category associates a name to a URL
@@ -28,52 +29,10 @@ type DownloadEnt struct {
 // DownloadEntMap maps the URLs to the DownloadEnt values
 type DownloadEntMap map[string]DownloadEnt
 
-// PartData collects all the information about an individual part.
-// It is read in from the spreadsheet and updated by the spider
-type PartData struct {
-	Order   uint   // General output order for sorting the spreadsheet
-	Section string // The path where the part occurs
-	Name    string // Name of the model file
-	SKU     string // Part number/SKU
-	// CombinedName string   // This really doesn't need to be stored as it is created by concatenating Name and SKU
-	URL          string    // URL on the vendor website for the part
-	ModelURL     string    // URL on the vendor website for any 3d model
-	Extra        [7]string // Extra items associated with the part
-	OnshapeURL   string    // Location of the Onshape model
-	Status       string    // Status of the Onshape model (Done, Bundle, etc)
-	SpiderStatus string    // Status from the latest spidering.  Possible values are
-	//                            New            SKU was found on website but was not in the spreadsheet
-	//                            Not Found      SKU from spreadsheet was not found on the website
-	//                            Changed        SKU was found on website but some data didn't match.  The Notes field indicates what has changed
-	//                            Discontinued   SKU was identified as discontinued
-	//                            Same           Product is the same
-	//                      Note, when reading in from the spreadsheet, the value should be initialized to Not Found unless it already was Discontinued
-	Notes string // Any general information about the part
-}
-
-// ReferenceDataEnt - collection of part numbers and urls
-type ReferenceDataEnt struct {
-	Mu         sync.Mutex
-	Partdata   []*PartData
-	PartNumber map[string]*PartData
-	URL        map[string]*PartData
-
-	OrderColumnIndex      int
-	SectionColumnIndex    int
-	NameColumnIndex       int
-	SKUColumnIndex        int
-	URLColumnIndex        int
-	ModelURLColumnIndex   int
-	ExtraColumnIndex      int
-	OnshapeURLColumnIndex int
-	StatusColumnIndex     int
-	NotesColumnIndex      int
-}
-
 // Globals contains common data for the entire module
 type Globals struct {
 	// Gobilda Spreadsheet of parts and thier status
-	ReferenceData *ReferenceDataEnt
+	ReferenceData *partcatalog.PartCatalogData
 
 	// Protect access to tables
 	Mu sync.Mutex
@@ -103,7 +62,7 @@ type SpiderTarget struct {
 	Presets        []string
 	Seed           string
 	ParsePageFunc  func(ctx *Context, doc *goquery.Document)
-	CheckMatchFunc func(ctx *Context, partData *PartData)
+	CheckMatchFunc func(ctx *Context, partData *partcatalog.PartData)
 
 	// SectionNameDeletes is the substring which can be removed from the section name safely.
 	// e.g. "Shop by Hub Style > "
@@ -238,7 +197,7 @@ func OutputCategory(ctx *Context, breadcrumbs string, trimlast bool) {
 
 // OutputProduct takes the spidered information and generates the output structure
 func OutputProduct(ctx *Context, name string, sku string, url string, modelURL string, isDiscontinued bool, extra []string) {
-	var partData PartData
+	var partData partcatalog.PartData
 	partData.Name = name
 	partData.SKU = sku
 	partData.URL = url
@@ -255,15 +214,15 @@ func OutputProduct(ctx *Context, name string, sku string, url string, modelURL s
 	ctx.G.TargetConfig.CheckMatchFunc(ctx, &partData)
 
 	if isDiscontinued {
-		partData.SpiderStatus = "Discontinued"
+		partData.SpiderStatus = partcatalog.DiscontinuedPart
 	}
 	OutputPartData(ctx, &partData)
 }
 
 // OutputPartData generates the product line for the output file and also prints a status message on stdout
-func OutputPartData(ctx *Context, partData *PartData) {
+func OutputPartData(ctx *Context, partData *partcatalog.PartData) {
 
-	fmt.Printf("%s |SKU: '%v' Product: '%v' Model:'%v' on page '%v'\n", partData.SpiderStatus, partData.SKU, partData.Name, partData.ModelURL, partData.URL)
+	partData.Println()
 
 	fmt.Fprintf(ctx.G.Outfile, "%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v`%v\n",
 		partData.Order,
@@ -289,32 +248,8 @@ func OutputError(ctx *Context, message string, args ...interface{}) {
 	ctx.G.Linenum++
 }
 
-// ExcludeFromMatch checks to see whether something should be spidered
-func ExcludeFromMatch(ctx *Context, partdata *PartData) bool {
-	exclude := false
-	if strings.HasPrefix(partdata.Name, "--") {
-		exclude = true
-	}
-	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
-		exclude = true
-	}
-	if strings.HasPrefix(partdata.SKU, "(Configurable)") {
-		exclude = true
-	}
-	if strings.HasPrefix(partdata.SKU, "(No Part Number)") {
-		exclude = true
-	}
-	if exclude {
-		partdata.Order = uint(ctx.G.Linenum)
-		partdata.SpiderStatus = "Same"
-		OutputPartData(ctx, partdata)
-		ctx.G.Linenum++
-	}
-	return exclude
-}
-
 // NilParsePage is the dummy parser when no vendor is selected
 func NilParsePage(ctx *Context, doc *goquery.Document) {}
 
 // NilCheckMatch is the dummy check match cleanup routine
-func NilCheckMatch(ctx *Context, partData *PartData) {}
+func NilCheckMatch(ctx *Context, partData *partcatalog.PartData) {}

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/toebes/ftc_parts_spider/partcatalog"
 	"github.com/toebes/ftc_parts_spider/spiderdata"
 
 	"github.com/PuerkitoBio/goquery"
@@ -59,17 +60,13 @@ var ServocityTarget = spiderdata.SpiderTarget{
 
 // CheckServocityMatch compares a partData to what has been captured from the spreadsheet
 // Any differences are put into the notes
-func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData) {
+func CheckServocityMatch(ctx *spiderdata.Context, partData *partcatalog.PartData) {
 	entry, found := ctx.G.ReferenceData.PartNumber[partData.SKU]
 	if !found {
 		entry, found = ctx.G.ReferenceData.URL[partData.URL]
 	}
 	if found {
 		// We matched a previous entry
-		ctx.G.ReferenceData.Mu.Lock()
-		delete(ctx.G.ReferenceData.URL, entry.URL)
-		delete(ctx.G.ReferenceData.PartNumber, entry.SKU)
-		ctx.G.ReferenceData.Mu.Unlock()
 
 		// // Check the contents of the record and see what needs to be consolidated
 		extra := ""
@@ -82,7 +79,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData)
 			partData.Notes += extra + entry.Notes
 			extra = separator
 		}
-		partData.SpiderStatus = "Same"
+		partData.SpiderStatus = partcatalog.UnchangedPart
 		// If it was in a different path (the part moved on the website) Then we want to
 		// keep the old section and record a message for the new section
 		// Note that it may not have moved, but we chose to organize it slightly different
@@ -120,7 +117,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData)
 			if strings.EqualFold(newsection, oldsection) || (matched && strings.EqualFold(propersection, oldsection)) {
 				partData.Section = entry.Section
 			} else {
-				partData.SpiderStatus = "Changed"
+				partData.SpiderStatus = partcatalog.PartChanged
 				partData.Notes += extra + "New Section:" + newsection
 				partData.Section = entry.Section
 				extra = separator
@@ -148,7 +145,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData)
 				partData.Name = newName
 			} else {
 				// Eliminate double spaces
-				partData.SpiderStatus = "Changed"
+				partData.SpiderStatus = partcatalog.PartChanged
 				partData.Notes += extra + "New Name:" + newName
 				partData.Name = oldName
 				extra = separator
@@ -157,7 +154,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData)
 		// If the SKU changes then we really want to know it.  We should use the new SKU
 		// and stash away the old SKU but it needs to be updated
 		if !strings.EqualFold(partData.SKU, entry.SKU) {
-			partData.SpiderStatus = "Changed"
+			partData.SpiderStatus = partcatalog.PartChanged
 			partData.Notes += extra + " Old SKU:" + entry.SKU
 			extra = separator
 		}
@@ -176,7 +173,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData)
 			if strings.EqualFold(oldURL, newURL) {
 				partData.URL = urlString
 			} else {
-				partData.SpiderStatus = "Changed"
+				partData.SpiderStatus = partcatalog.PartChanged
 				partData.Notes += extra + " Old URL:" + entry.URL
 				extra = separator
 			}
@@ -198,7 +195,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *spiderdata.PartData)
 			partData.Status = entry.Status
 		}
 	} else {
-		partData.SpiderStatus = "New"
+		partData.SpiderStatus = partcatalog.NewPart
 		partData.Status = "Not Done"
 	}
 
