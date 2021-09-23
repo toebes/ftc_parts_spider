@@ -515,7 +515,7 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 		sku, hassku = product.Find("meta[itemprop=\"sku\"]").Attr("content")
 	}
 	fmt.Printf("Process Product\n")
-	changeset := product.Find("[data-product-option-change]")
+	changeset := product.Find("div.available")
 	//  <div data-product-option-change="" style="">
 	//    <div class="form-field" data-product-attribute="set-radio">
 	//      <label class="form-label form-label--alternate form-label--inlineSmall">
@@ -529,28 +529,40 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 	//      <label data-product-attribute-value="144" class="form-label" for="attribute_radio_144">100cm</label>
 	//    </div>
 	//  </div>
+	if changeset.Length() == 0 {
+		changeset = product.Find("[data-product-option-change]")
+	}
 
 	downloadurls := findAllDownloads(ctx, url, product)
 	if hassku {
 		if changeset.Children().Length() > 0 {
-			changeset.Find("input").Each(func(i int, input *goquery.Selection) {
+			changeset.Find("input.childProductOption").Each(func(i int, input *goquery.Selection) {
 				itemname := localname
-				itemsku := sku
-				// We have a pair like this:
-				//      <input class="form-radio" type="radio" id="attribute_radio_114" name="attribute[53]" value="114" required="" data-state="false">
-				//      <label data-product-attribute-value="114" class="form-label" for="attribute_radio_114">30cm</label>
-				_, ischecked := input.Attr("checked")
-				// Unfortunately we don't know how to recover the item SKU.  it comes from some external file that we didn't load
-				if !ischecked {
-					itemsku = sku[:7] + "????" // Take the REV-nn- portion of the SKU
-				}
-				// But we do need to find the item name
-				val, hasval := input.Attr("value")
-				if hasval {
-					tofind := "[data-product-attribute-value=\"" + val + "\"]"
-					label := changeset.Find(tofind)
-					if label.Length() > 0 {
-						itemname += " " + label.Text()
+				itemsku, hassku := input.Attr("data-sku")
+				if hassku {
+					// We have the SKU, so we need to pop up to the parent and find the H4 entry with the name
+					itemextraname := input.Parent().Find("h4.card-title")
+					if itemextraname.Length() > 0 {
+						itemname += " - " + strings.TrimSpace(itemextraname.Text())
+					}
+				} else {
+					itemsku = sku
+					// We have a pair like this:
+					//      <input class="form-radio" type="radio" id="attribute_radio_114" name="attribute[53]" value="114" required="" data-state="false">
+					//      <label data-product-attribute-value="114" class="form-label" for="attribute_radio_114">30cm</label>
+					_, ischecked := input.Attr("checked")
+					// Unfortunately we don't know how to recover the item SKU.  it comes from some external file that we didn't load
+					if !ischecked {
+						itemsku = sku[:7] + "????" // Take the REV-nn- portion of the SKU
+					}
+					// But we do need to find the item name
+					val, hasval := input.Attr("value")
+					if hasval {
+						tofind := "[data-product-attribute-value=\"" + val + "\"]"
+						label := changeset.Find(tofind)
+						if label.Length() > 0 {
+							itemname += " " + label.Text()
+						}
 					}
 				}
 				spiderdata.OutputProduct(ctx, itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), isDiscontinued, nil)
@@ -837,8 +849,8 @@ func ParseServocityPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	isDiscontinued := (doc.Find("p.discontinued").Length() > 0)
 
 	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
-	doc.Find("ul.navList").Each(func(i int, categoryproducts *goquery.Selection) {
-		fmt.Printf("Found Navlist\n")
+	doc.Find("ul.navPages-list").Each(func(i int, categoryproducts *goquery.Selection) {
+		fmt.Printf("Found Navigation List\n")
 		if processSubCategory(ctx, breadcrumbs, categoryproducts) {
 			found = true
 		}
@@ -861,6 +873,18 @@ func ParseServocityPage(ctx *spiderdata.Context, doc *goquery.Document) {
 				found = true
 			}
 		})
+	}
+	if !found {
+		hasOptions := doc.Find("div.available section.productView-children")
+		if hasOptions.Length() > 0 {
+			products := doc.Find("header.productView-header")
+
+			products.Each(func(i int, product *goquery.Selection) {
+				if processProduct(ctx, breadcrumbs, url, product.Parent(), isDiscontinued, products.Length() > 1) {
+					found = true
+				}
+			})
+		}
 	}
 	doc.Find("script").Each(func(i int, product *goquery.Selection) {
 		if processLazyLoad(ctx, breadcrumbs, url, product) {
