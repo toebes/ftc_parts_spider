@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/toebes/ftc_parts_spider/andymark"
 	"github.com/toebes/ftc_parts_spider/gobilda"
 	"github.com/toebes/ftc_parts_spider/partcatalog"
 	"github.com/toebes/ftc_parts_spider/revrobotics"
@@ -38,14 +39,7 @@ var (
 		"rev":       &revrobotics.RevRoboticsTarget,
 		"servocity": &servocity.ServocityTarget,
 		"gobilda":   &gobilda.GobildaTarget,
-		"andymark": {
-			Outfile:        "andymark.txt",
-			SpreadsheetID:  "1x4SUwNaQ_X687yA6kxPELoe7ZpoCKnnCq1-OsgxUCOw",
-			Presets:        []string{},
-			Seed:           "",
-			ParsePageFunc:  spiderdata.NilParsePage,
-			CheckMatchFunc: spiderdata.NilCheckMatch,
-		},
+		"andymark":  &andymark.AndyMarkTarget,
 		"pitsco": {
 			Outfile:        "pitsco.txt",
 			SpreadsheetID:  "1adykd3BVYUyXsb3vC2A-lNhFNj_Q8Yzd1oXThmSwPio",
@@ -57,8 +51,11 @@ var (
 	}
 
 	// Command-line flags
-	target      = flag.String("target", "rev", "Target vendor to spider")
-	seed        = flag.String("seed", "https://www.revrobotics.com/xt30-extension-cable-2-pack/", "seed URL")
+	target = flag.String("target", "andymark", "Target vendor to spider")
+	seed   = flag.String("seed", "https://www.andymark.com/", "seed URL")
+	// seed = flag.String("seed", "https://www.servocity.com/servo-winch-pulley-h25t-3f-spline/", "seed URL")
+
+	//seed        = flag.String("seed", "", "seed URL")
 	cancelAfter = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
 	//target        = flag.String("target", "gobilda", "Target vendor to spider")
 	//seed          = flag.String("seed", "https://www.gobilda.com/5202-series-yellow-jacket-planetary-gear-motor-19-2-1-ratio-312-rpm-3-3-5v-encoder/", "seed URL")

@@ -37,12 +37,12 @@ func getTokenFromWeb(config *oauth2.Config) (*oauth2.Token, error) {
 		"authorization code: \n%v\n", authURL)
 
 	var authCode string
-	/*
-		if _, err := fmt.Scan(&authCode); err != nil {
-			fmt.Println("visit https://developers.google.com/sheets/api/quickstart/go")
-			return nil, fmt.Errorf("Unable to read authorization code. Caused by: %v", err)
-		}*/
-	authCode = "4/1AY0e-g4Kdfb5TzWPaF0SeF6dCUuDozGK7PfrDpB92msXpurmitZ195lPMpM"
+
+	if _, err := fmt.Scan(&authCode); err != nil {
+		fmt.Println("visit https://developers.google.com/sheets/api/quickstart/go")
+		return nil, fmt.Errorf("Unable to read authorization code. Caused by: %v", err)
+	}
+	// authCode = ""
 
 	tok, err := config.Exchange(context.TODO(), authCode)
 	if err != nil {
