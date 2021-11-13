@@ -444,7 +444,10 @@ func CacheNavMenu(ctx *spiderdata.Context, navtitle string, l2menu *goquery.Sele
 // ParseAndyMarkPage parses a page and adds links to elements found within by the various processors
 func ParseAndyMarkPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := doc.Url.String()
+	url := ""
+	if doc.Url != nil {
+		url = doc.Url.String()
+	}
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	spiderdata.MarkVisitedURL(ctx, url, breadcrumbs)

@@ -51,8 +51,8 @@ var (
 	}
 
 	// Command-line flags
-	target = flag.String("target", "andymark", "Target vendor to spider")
-	seed   = flag.String("seed", "https://www.andymark.com/", "seed URL")
+	target = flag.String("target", "servocity", "Target vendor to spider")
+	seed   = flag.String("seed", "https://www.servocity.com/", "seed URL")
 	// seed = flag.String("seed", "https://www.servocity.com/servo-winch-pulley-h25t-3f-spline/", "seed URL")
 
 	//seed        = flag.String("seed", "", "seed URL")
@@ -147,8 +147,13 @@ func main() {
 	// requests.
 	mux.Response().Method("GET").ContentType("text/html").Handler(fetchbot.HandlerFunc(
 		func(ctx *fetchbot.Context, res *http.Response, err error) {
+			if err != nil {
+				fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
+				return
+			}
 			// Process the body to find the links
-			doc, err := goquery.NewDocumentFromResponse(res)
+			defer res.Body.Close()
+			doc, err := goquery.NewDocumentFromReader(res.Body)
 			if err != nil {
 				fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
 				return
@@ -229,6 +234,8 @@ func main() {
 		for _, entry := range context.G.ReferenceData.PartNumber {
 			spiderdata.EnqueURL(&context, entry.URL, entry.Section)
 		}
+	} else {
+		fmt.Print("*** -single option selected, no additional URLs will be spidered")
 	}
 
 	q.Block()

@@ -779,7 +779,10 @@ func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url 
 // ParseRevRoboticsPage parses a page and adds links to elements found within by the various processors
 func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := doc.Url.String()
+	url := ""
+	if doc.Url != nil {
+		url = doc.Url.String()
+	}
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
