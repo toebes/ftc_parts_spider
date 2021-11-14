@@ -1,7 +1,6 @@
 package servocity
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -131,7 +130,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *partcatalog.PartData
 			oldName := strings.ReplaceAll(entry.Name, "  ", " ")
 			// Name changes
 			// Get rid of any <n> Pack in the name
-			var re = regexp.MustCompile("[\\- \\(]*[0-9]+ [pP]ack *\\)*")
+			var re = regexp.MustCompile(`[\- \(]*[0-9]+ [pP]ack *\)*`)
 			newName = re.ReplaceAllString(newName, "")
 
 			oldName = strings.ReplaceAll(oldName, "(Pair)", "")
@@ -175,7 +174,7 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *partcatalog.PartData
 			} else {
 				partData.SpiderStatus = partcatalog.PartChanged
 				partData.Notes += extra + " Old URL:" + entry.URL
-				extra = separator
+				// extra = separator
 			}
 		}
 		// For the model, we have the special case of NOMODEL to ignore but we really
@@ -194,6 +193,8 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *partcatalog.PartData
 		if partData.Status == "" {
 			partData.Status = entry.Status
 		}
+		// Prevent us from outputting the same entry more than once.
+		entry.SpiderStatus = partData.SpiderStatus
 	} else {
 		partData.SpiderStatus = partcatalog.NewPart
 		partData.Status = "Not Done"
@@ -256,7 +257,7 @@ func getDownloadURL(ctx *spiderdata.Context, sku string, downloadurls spiderdata
 	// But the text for the URL is mistyped as '535314' but it links to 'https://www.servocity.com/media/attachment/file/5/4/545314.zip'
 	// So we want to try to use it
 	for key, element := range downloadurls {
-		if !element.Used && strings.Index(element.URL, sku) >= 0 {
+		if !element.Used && strings.Contains(element.URL, sku) {
 			result = element.URL
 			downloadurls[key] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
 			return
@@ -289,7 +290,7 @@ func getDownloadURL(ctx *spiderdata.Context, sku string, downloadurls spiderdata
 	// To match, we drop everything after the - and check the list again
 	skupart := strings.Split(strings.ToLower(sku), "-")
 	for key, element := range downloadurls {
-		if !element.Used && strings.Index(element.URL, skupart[0]) >= 0 {
+		if !element.Used && strings.Contains(element.URL, skupart[0]) {
 			result = element.URL
 			downloadurls[key] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
 			return
@@ -307,25 +308,25 @@ func showUnusedURLS(ctx *spiderdata.Context, url string, downloadurls spiderdata
 	for key, element := range downloadurls {
 		if !element.Used {
 			// If it says instructions or other nonesense, we can ignore it.
-			if strings.Index(key, "Instructions") < 0 &&
-				strings.Index(key, "Spec Sheet") < 0 &&
-				strings.Index(key, "Specs") < 0 &&
-				strings.Index(key, "Guide") < 0 &&
-				strings.Index(key, "Diagram") < 0 &&
-				strings.Index(key, "Charts") < 0 &&
-				strings.Index(key, "Manual") < 0 &&
-				strings.Index(key, ".pdf") < 0 &&
-				strings.Index(key, ".docx") < 0 &&
-				strings.Index(key, ".exe") < 0 &&
-				strings.Index(key, "arduino") < 0 &&
-				strings.Index(key, "oboclaw_") < 0 &&
-				strings.Index(key, "RoboclawClassLib") < 0 &&
-				strings.Index(key, "USBRoboclawVirtualComport") < 0 &&
-				strings.Index(key, "Pattern Information") < 0 &&
-				strings.Index(key, "bldc_hsr_") < 0 &&
-				strings.Index(key, "595644_assembly") < 0 &&
-				strings.Index(key, "Hardware Accessory Pack") < 0 &&
-				strings.Index(key, "Use Parameter") < 0 {
+			if strings.Contains(key, "Instructions") &&
+				strings.Contains(key, "Spec Sheet") &&
+				strings.Contains(key, "Specs") &&
+				strings.Contains(key, "Guide") &&
+				strings.Contains(key, "Diagram") &&
+				strings.Contains(key, "Charts") &&
+				strings.Contains(key, "Manual") &&
+				strings.Contains(key, ".pdf") &&
+				strings.Contains(key, ".docx") &&
+				strings.Contains(key, ".exe") &&
+				strings.Contains(key, "arduino") &&
+				strings.Contains(key, "oboclaw_") &&
+				strings.Contains(key, "RoboclawClassLib") &&
+				strings.Contains(key, "USBRoboclawVirtualComport") &&
+				strings.Contains(key, "Pattern Information") &&
+				strings.Contains(key, "bldc_hsr_") &&
+				strings.Contains(key, "595644_assembly") &&
+				strings.Contains(key, "Hardware Accessory Pack") &&
+				strings.Contains(key, "Use Parameter") {
 
 				spiderdata.OutputError(ctx, "Unused download``%s``%s`%s\n", key, url, element.URL)
 			}
@@ -708,119 +709,119 @@ func processTable(ctx *spiderdata.Context, productname string, url string, downl
 	return
 }
 
-func processJavascriptSelector(ctx *spiderdata.Context, breadcrumbs string, url string, product *goquery.Selection) (found bool) {
-	type SingleOption struct {
-		ID       string
-		Label    string
-		Price    string
-		OldPrice string
-		Products []string
-	}
-	type AttributesConfig struct {
-		ID      string
-		Code    string
-		Label   string
-		Options []SingleOption
-		// Options interface{} // []SingleOption
-	}
-	type ProductConfig struct {
-		// Attributes map[string]interface{} `json:"attributes"`
-		Attributes map[string]AttributesConfig `json:"attributes"`
-		Template   string                      `json:"template"`
-		BasePrice  string                      `json:"basePrice"`
-		OldPrice   string                      `json:"oldPrice"`
-		ProductID  string                      `json:"productId"`
-		ChooseText string                      `json:"chooseText"`
-		TaxConfig  string                      `json:"taxConfig"`
-	}
-	type ProductInfo struct {
-		Label string
-		SKU   string
-	}
-	found = false
-	downloadurls := findAllDownloads(ctx, url, product)
-	ProductMap := map[string]ProductInfo{}
-	productname := ""
-	pn := product.Find("div.product-name h1")
-	if pn.Length() > 0 {
-		productname = pn.Text()
-	}
-	product.Find("script").Each(func(i int, js *goquery.Selection) {
-		jstext := js.Text()
-		pos := strings.Index(jstext, "Product.Config(")
-		if pos > 0 {
-			pos2 := strings.Index(jstext, ");")
-			// fmt.Printf("Found Javascript pos=%d pos2=%d '%s'\n", pos, pos2, jstext)
-			if pos2 > 0 {
+// func processJavascriptSelector(ctx *spiderdata.Context, breadcrumbs string, url string, product *goquery.Selection) (found bool) {
+// 	type SingleOption struct {
+// 		ID       string
+// 		Label    string
+// 		Price    string
+// 		OldPrice string
+// 		Products []string
+// 	}
+// 	type AttributesConfig struct {
+// 		ID      string
+// 		Code    string
+// 		Label   string
+// 		Options []SingleOption
+// 		// Options interface{} // []SingleOption
+// 	}
+// 	type ProductConfig struct {
+// 		// Attributes map[string]interface{} `json:"attributes"`
+// 		Attributes map[string]AttributesConfig `json:"attributes"`
+// 		Template   string                      `json:"template"`
+// 		BasePrice  string                      `json:"basePrice"`
+// 		OldPrice   string                      `json:"oldPrice"`
+// 		ProductID  string                      `json:"productId"`
+// 		ChooseText string                      `json:"chooseText"`
+// 		TaxConfig  string                      `json:"taxConfig"`
+// 	}
+// 	type ProductInfo struct {
+// 		Label string
+// 		SKU   string
+// 	}
+// 	found = false
+// 	downloadurls := findAllDownloads(ctx, url, product)
+// 	ProductMap := map[string]ProductInfo{}
+// 	productname := ""
+// 	pn := product.Find("div.product-name h1")
+// 	if pn.Length() > 0 {
+// 		productname = pn.Text()
+// 	}
+// 	product.Find("script").Each(func(i int, js *goquery.Selection) {
+// 		jstext := js.Text()
+// 		pos := strings.Index(jstext, "Product.Config(")
+// 		if pos > 0 {
+// 			pos2 := strings.Index(jstext, ");")
+// 			// fmt.Printf("Found Javascript pos=%d pos2=%d '%s'\n", pos, pos2, jstext)
+// 			if pos2 > 0 {
 
-				//                  "371":{"id":"371",
-				//                         "code":"length_configurable",
-				//                         "label":"Length",
-				//                         "options":[{"id":"244","label":"4mm","price":"0","oldPrice":"0","products":["6452"]},
-				//                                    {"id":"245","label":"5mm","price":"0","oldPrice":"0","products":["6453"]}
-				//                                   ]
-				var result ProductConfig
-				jsontext := jstext[pos+15 : pos2]
-				fmt.Printf("JSON ='%s'\n", jsontext)
-				json.Unmarshal([]byte(jsontext), &result)
-				fmt.Printf("Parse Result:%s\n", result)
-				fmt.Printf("Parse Result:%s\n", result.Attributes)
-				for key, value := range result.Attributes {
-					for key1, value1 := range value.Options {
-						fmt.Printf("Key:%s[%d] ID:%s Products:%s\n", key, key1, value1.ID, value1.Products)
-						for _, value2 := range value1.Products {
-							label := ""
-							oldmap, exists := ProductMap[value2]
-							oldlabel := ""
-							extra := ""
-							if exists {
-								oldlabel = oldmap.Label
-								extra = " "
-							}
-							if value1.Label == "Yes" {
-								label = value.Label
-							} else if value1.Label == "No" {
-								extra = ""
-							} else {
-								label = value.Label + " " + value1.Label
-							}
-							ProductMap[value2] = ProductInfo{oldlabel + extra + label, ""}
-						}
-					}
-				}
-			}
-		} else {
-			// We want to parse the ProductMap which should look something like
-			// var productMap = {"6452":"92029A140","6453":"92029A141"};
-			pos = strings.Index(jstext, "var productMap = ")
-			if pos >= 0 {
-				pos2 := strings.Index(jstext, "};")
-				if pos2 >= 0 {
-					// Extract just the value to assign
-					pmtext := jstext[pos+17 : pos2+1]
-					fmt.Printf("***pmtext:%s\n", pmtext)
-					var result map[string]string
-					// And pull it into a map
-					json.Unmarshal([]byte(pmtext), &result)
-					// Which we iterate through
-					for key, value := range result {
-						// And assign to the products
-						Label := ProductMap[key].Label
-						ProductMap[key] = ProductInfo{Label, value}
-					}
+// 				//                  "371":{"id":"371",
+// 				//                         "code":"length_configurable",
+// 				//                         "label":"Length",
+// 				//                         "options":[{"id":"244","label":"4mm","price":"0","oldPrice":"0","products":["6452"]},
+// 				//                                    {"id":"245","label":"5mm","price":"0","oldPrice":"0","products":["6453"]}
+// 				//                                   ]
+// 				var result ProductConfig
+// 				jsontext := jstext[pos+15 : pos2]
+// 				fmt.Printf("JSON ='%s'\n", jsontext)
+// 				json.Unmarshal([]byte(jsontext), &result)
+// 				fmt.Printf("Parse Result:%s\n", result)
+// 				fmt.Printf("Parse Result:%s\n", result.Attributes)
+// 				for key, value := range result.Attributes {
+// 					for key1, value1 := range value.Options {
+// 						fmt.Printf("Key:%s[%d] ID:%s Products:%s\n", key, key1, value1.ID, value1.Products)
+// 						for _, value2 := range value1.Products {
+// 							label := ""
+// 							oldmap, exists := ProductMap[value2]
+// 							oldlabel := ""
+// 							extra := ""
+// 							if exists {
+// 								oldlabel = oldmap.Label
+// 								extra = " "
+// 							}
+// 							if value1.Label == "Yes" {
+// 								label = value.Label
+// 							} else if value1.Label == "No" {
+// 								extra = ""
+// 							} else {
+// 								label = value.Label + " " + value1.Label
+// 							}
+// 							ProductMap[value2] = ProductInfo{oldlabel + extra + label, ""}
+// 						}
+// 					}
+// 				}
+// 			}
+// 		} else {
+// 			// We want to parse the ProductMap which should look something like
+// 			// var productMap = {"6452":"92029A140","6453":"92029A141"};
+// 			pos = strings.Index(jstext, "var productMap = ")
+// 			if pos >= 0 {
+// 				pos2 := strings.Index(jstext, "};")
+// 				if pos2 >= 0 {
+// 					// Extract just the value to assign
+// 					pmtext := jstext[pos+17 : pos2+1]
+// 					fmt.Printf("***pmtext:%s\n", pmtext)
+// 					var result map[string]string
+// 					// And pull it into a map
+// 					json.Unmarshal([]byte(pmtext), &result)
+// 					// Which we iterate through
+// 					for key, value := range result {
+// 						// And assign to the products
+// 						Label := ProductMap[key].Label
+// 						ProductMap[key] = ProductInfo{Label, value}
+// 					}
 
-				}
-			}
-			// fmt.Printf("Javascript: %s\n", jstext)
-		}
-	})
-	// Ok we got the data.  Dump it out for now
-	for _, value := range ProductMap {
-		spiderdata.OutputProduct(ctx, productname+" "+value.Label, value.SKU, url, getDownloadURL(ctx, value.SKU, downloadurls), false, nil)
-		found = true
-	}
-	return
-}
+// 				}
+// 			}
+// 			// fmt.Printf("Javascript: %s\n", jstext)
+// 		}
+// 	})
+// 	// Ok we got the data.  Dump it out for now
+// 	for _, value := range ProductMap {
+// 		spiderdata.OutputProduct(ctx, productname+" "+value.Label, value.SKU, url, getDownloadURL(ctx, value.SKU, downloadurls), false, nil)
+// 		found = true
+// 	}
+// 	return
+// }
 
 func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url string, productname string, root *goquery.Selection, table *goquery.Selection) (found bool) {
 	found = false
@@ -840,10 +841,7 @@ func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url 
 // ParseServocityPage parses a page and adds links to elements found within by the various processors
 func ParseServocityPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := ""
-	if doc.Url != nil {
-		url = doc.Url.String()
-	}
+	url := ctx.Cmd.URL().String()
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	spiderdata.MarkVisitedURL(ctx, url, breadcrumbs)

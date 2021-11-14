@@ -66,7 +66,7 @@ var (
 	memStats      = flag.Duration("memstats", 0, "display memory statistics at a given interval")
 	fileout       = flag.String("out", "", "Output File")
 	spreadsheetID = flag.String("spreadsheet", "", "spider this spreadsheet")
-	singleOnly    = flag.Bool("single", true, "Only process the seed and don't follow any additional links")
+	singleOnly    = flag.Bool("single", false, "Only process the seed and don't follow any additional links")
 )
 
 // ExcludeFromMatch checks to see whether something should be spidered

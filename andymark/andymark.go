@@ -142,7 +142,7 @@ func CheckAndyMarkMatch(ctx *spiderdata.Context, partData *partcatalog.PartData)
 			} else {
 				partData.SpiderStatus = partcatalog.PartChanged
 				partData.Notes += extra + " Old URL:" + entry.URL
-				extra = separator
+				// extra = separator
 			}
 		}
 		// For the model, we have the special case of NOMODEL to ignore but we really
@@ -161,6 +161,8 @@ func CheckAndyMarkMatch(ctx *spiderdata.Context, partData *partcatalog.PartData)
 		if partData.Status == "" {
 			partData.Status = entry.Status
 		}
+		// Prevent us from outputting the same entry more than once.
+		entry.SpiderStatus = partData.SpiderStatus
 	} else {
 		partData.SpiderStatus = partcatalog.NewPart
 		partData.Status = "Not Done"
@@ -444,10 +446,7 @@ func CacheNavMenu(ctx *spiderdata.Context, navtitle string, l2menu *goquery.Sele
 // ParseAndyMarkPage parses a page and adds links to elements found within by the various processors
 func ParseAndyMarkPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := ""
-	if doc.Url != nil {
-		url = doc.Url.String()
-	}
+	url := ctx.Cmd.URL().RawPath
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	spiderdata.MarkVisitedURL(ctx, url, breadcrumbs)

@@ -189,6 +189,8 @@ func CheckRevRoboticsMatch(ctx *spiderdata.Context, partData *partcatalog.PartDa
 		if partData.Status == "" {
 			partData.Status = entry.Status
 		}
+		// Prevent us from outputting the same entry more than once.
+		entry.SpiderStatus = partData.SpiderStatus
 	} else {
 		partData.SpiderStatus = partcatalog.NewPart
 		partData.Status = "Not Done"
@@ -778,10 +780,7 @@ func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url 
 // ParseRevRoboticsPage parses a page and adds links to elements found within by the various processors
 func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := ""
-	if doc.Url != nil {
-		url = doc.Url.String()
-	}
+	url := ctx.Cmd.URL().String()
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
