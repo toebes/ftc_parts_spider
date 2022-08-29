@@ -337,24 +337,26 @@ func showUnusedURLS(ctx *spiderdata.Context, url string, downloadurls spiderdata
 
 // getBreadCrumbName returns the breadcrumb associated with a document
 // A typical one looks like this:
-//     <div class="breadcrumbs">
-//     <ul>
-//                     <li class="home">
-//                             <a href="https://www.servocity.com/" title="Go to Home Page">Home</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category30">
-//                             <a href="https://www.servocity.com/motion-components" title="">Motion Components</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category44">
-//                             <a href="https://www.servocity.com/motion-components/linear-motion" title="">Linear Motion</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category87">
-//                             <strong>Linear Bearings</strong>
-//                                     </li>
-//             </ul>
+//
+//	<div class="breadcrumbs">
+//	<ul>
+//	                <li class="home">
+//	                        <a href="https://www.servocity.com/" title="Go to Home Page">Home</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category30">
+//	                        <a href="https://www.servocity.com/motion-components" title="">Motion Components</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category44">
+//	                        <a href="https://www.servocity.com/motion-components/linear-motion" title="">Linear Motion</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category87">
+//	                        <strong>Linear Bearings</strong>
+//	                                </li>
+//	        </ul>
+//
 // </div>
 //
 // What we want to get is the name (the sections in the <a> or the <strong>) while building up a database of matches to
@@ -404,9 +406,9 @@ func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selectio
 func processSubCategory(ctx *spiderdata.Context, breadcrumbs string, categoryproducts *goquery.Selection) (found bool) {
 	found = false
 	fmt.Printf("processSubCategory\n")
-	categoryproducts.Find("li.navList-item").Each(func(i int, item *goquery.Selection) {
+	categoryproducts.Find("li.navList-item,li.navPages-item").Each(func(i int, item *goquery.Selection) {
 		// fmt.Printf("-Found Category product LI element\n")
-		item.Find("a.navList-action").Each(func(i int, elem *goquery.Selection) {
+		item.Find("a.navList-action,a.navPages-action").Each(func(i int, elem *goquery.Selection) {
 			url, _ := elem.Attr("href")
 			elemtext := "<NOT FOUND>"
 			elem.Find("span").Each(func(i int, span *goquery.Selection) {
@@ -854,7 +856,7 @@ func ParseServocityPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	doc.Find("ul.navPages-list").Each(func(i int, categoryproducts *goquery.Selection) {
 		fmt.Printf("Found Navigation List\n")
 		if processSubCategory(ctx, breadcrumbs, categoryproducts) {
-			found = true
+			found = false
 		}
 	})
 	if !found {
