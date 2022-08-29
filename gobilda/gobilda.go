@@ -16,6 +16,7 @@ var GobildaTarget = spiderdata.SpiderTarget{
 		"https://www.gobilda.com/hardware/",
 		"https://www.gobilda.com/kits/"},
 	Seed:           "https://www.gobilda.com/structure/",
+	StripSKU:       true,
 	ParsePageFunc:  servocity.ParseServocityPage,
 	CheckMatchFunc: servocity.CheckServocityMatch,
 	SectionNameDeletes: []string{

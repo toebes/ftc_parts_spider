@@ -33,6 +33,7 @@ var (
 			SpreadsheetID:  "",
 			Presets:        []string{},
 			Seed:           "",
+			StripSKU:       false,
 			ParsePageFunc:  spiderdata.NilParsePage,
 			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
@@ -45,21 +46,16 @@ var (
 			SpreadsheetID:  "1adykd3BVYUyXsb3vC2A-lNhFNj_Q8Yzd1oXThmSwPio",
 			Presets:        []string{},
 			Seed:           "",
+			StripSKU:       false,
 			ParsePageFunc:  spiderdata.NilParsePage,
 			CheckMatchFunc: spiderdata.NilCheckMatch,
 		},
 	}
 
 	// Command-line flags
-	target = flag.String("target", "servocity", "Target vendor to spider")
-	seed   = flag.String("seed", "https://www.servocity.com/", "seed URL")
-	// seed = flag.String("seed", "https://www.servocity.com/servo-winch-pulley-h25t-3f-spline/", "seed URL")
-
-	//seed        = flag.String("seed", "", "seed URL")
-	cancelAfter = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
-	//target        = flag.String("target", "gobilda", "Target vendor to spider")
-	//seed          = flag.String("seed", "https://www.gobilda.com/5202-series-yellow-jacket-planetary-gear-motor-19-2-1-ratio-312-rpm-3-3-5v-encoder/", "seed URL")
-	//cancelAfter   = flag.Duration("cancelafter", 5, "automatically cancel the fetchbot after a given time")
+	target        = flag.String("target", "gobilda", "Target vendor to spider")
+	seed          = flag.String("seed", "https://www.gobilda.com/", "seed URL")
+	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
 	cancelAtURL   = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
 	stopAfter     = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
 	stopAtURL     = flag.String("stopat", "", "automatically stop the fetchbot at a given URL")
@@ -67,6 +63,7 @@ var (
 	fileout       = flag.String("out", "", "Output File")
 	spreadsheetID = flag.String("spreadsheet", "", "spider this spreadsheet")
 	singleOnly    = flag.Bool("single", false, "Only process the seed and don't follow any additional links")
+	StripSKU      = flag.Bool("stripsku", false, "Strip the SKU and other parameters from URLs")
 )
 
 // ExcludeFromMatch checks to see whether something should be spidered
@@ -93,6 +90,7 @@ func main() {
 	context.G.CatMap = make(spiderdata.CategoryMap)
 	context.G.DownloadMap = make(spiderdata.DownloadEntMap)
 	context.G.SingleOnly = *singleOnly
+	context.G.StripSKU = *StripSKU
 
 	present := false
 	context.G.TargetConfig, present = targets[*target]
@@ -109,6 +107,10 @@ func main() {
 	}
 	if len(*spreadsheetID) == 0 {
 		*spreadsheetID = context.G.TargetConfig.SpreadsheetID
+	}
+
+	if context.G.TargetConfig.StripSKU {
+		context.G.StripSKU = context.G.TargetConfig.StripSKU
 	}
 
 	// Parse the provided seed
@@ -153,15 +155,19 @@ func main() {
 			}
 			// Process the body to find the links
 			defer res.Body.Close()
-			doc, err := goquery.NewDocumentFromReader(res.Body)
-			if err != nil {
-				fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
-				return
-			}
+			if res.StatusCode == 404 {
 
-			muxcontext := spiderdata.Context{Cmd: ctx.Cmd, Q: ctx.Q, G: context.G}
-			// Enqueue all links as HEAD requests
-			context.G.TargetConfig.ParsePageFunc(&muxcontext, doc)
+			} else {
+				doc, err := goquery.NewDocumentFromReader(res.Body)
+				if err != nil {
+					fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
+					return
+				}
+
+				muxcontext := spiderdata.Context{Cmd: ctx.Cmd, Q: ctx.Q, G: context.G}
+				// Enqueue all links as HEAD requests
+				context.G.TargetConfig.ParsePageFunc(&muxcontext, doc)
+			}
 		}))
 
 	// Handle HEAD requests for html responses coming from the source host - we don't want

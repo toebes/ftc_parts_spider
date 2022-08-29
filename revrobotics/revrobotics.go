@@ -16,6 +16,7 @@ var RevRoboticsTarget = spiderdata.SpiderTarget{
 	Outfile:        "rev_robotics.txt",
 	SpreadsheetID:  "19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0",
 	Presets:        []string{},
+	StripSKU:       true,
 	Seed:           "https://www.revrobotics.com/ftc/",
 	ParsePageFunc:  ParseRevRoboticsPage,
 	CheckMatchFunc: CheckRevRoboticsMatch,

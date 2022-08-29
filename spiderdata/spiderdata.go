@@ -46,6 +46,7 @@ type Globals struct {
 	TargetConfig  *SpiderTarget
 	Outfile       *os.File
 	SingleOnly    bool
+	StripSKU      bool
 }
 
 // Context provides the globals used everywhere
@@ -61,6 +62,7 @@ type SpiderTarget struct {
 	SpreadsheetID  string
 	Presets        []string
 	Seed           string
+	StripSKU       bool
 	ParsePageFunc  func(ctx *Context, doc *goquery.Document)
 	CheckMatchFunc func(ctx *Context, partData *partcatalog.PartData)
 
@@ -129,24 +131,26 @@ func CleanURL(url string) (result string, stripped bool) {
 
 // EnqueURL puts a URL on the queue
 func EnqueURL(ctx *Context, url string, breadcrumb string) {
-	// Resolve address
-	fmt.Printf("+++Enqueue:%s\n", url)
-	if ctx.Cmd != nil {
-		u, err := ctx.Cmd.URL().Parse(url)
-		if err != nil {
-			fmt.Printf("error: resolve URL %s - %s\n", url, err)
-			return
+	if url != "" {
+		// Resolve address
+		fmt.Printf("+++Enqueue:%s\n", url)
+		if ctx.Cmd != nil {
+			u, err := ctx.Cmd.URL().Parse(url)
+			if err != nil {
+				fmt.Printf("error: resolve URL %s - %s\n", url, err)
+				return
+			}
+			url = u.String()
 		}
-		url = u.String()
-	}
-	// Trim off any sku= on the URL
-	urlString, _ := CleanURL(url)
-	_, found := ctx.G.BreadcrumbMap[urlString]
-	if !found {
-		if _, err := ctx.Q.SendStringHead(urlString); err != nil {
-			fmt.Printf("error: enqueue head %s - %s\n", url, err)
-		} else {
-			ctx.G.BreadcrumbMap[urlString] = breadcrumb
+		// Trim off any sku= on the URL
+		urlString, _ := CleanURL(url)
+		_, found := ctx.G.BreadcrumbMap[urlString]
+		if !found {
+			if _, err := ctx.Q.SendStringHead(urlString); err != nil {
+				fmt.Printf("error: enqueue head %s - %s\n", url, err)
+			} else {
+				ctx.G.BreadcrumbMap[urlString] = breadcrumb
+			}
 		}
 	}
 }

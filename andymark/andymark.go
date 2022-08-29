@@ -1,6 +1,7 @@
 package andymark
 
 import (
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -15,6 +16,7 @@ var AndyMarkTarget = spiderdata.SpiderTarget{
 	Outfile:            "andymark.txt",
 	SpreadsheetID:      "1x4SUwNaQ_X687yA6kxPELoe7ZpoCKnnCq1-OsgxUCOw",
 	Presets:            []string{},
+	StripSKU:           false,
 	Seed:               "https://www.andymark.com/structure/",
 	ParsePageFunc:      ParseAndyMarkPage,
 	CheckMatchFunc:     CheckAndyMarkMatch,
@@ -170,6 +172,136 @@ func CheckAndyMarkMatch(ctx *spiderdata.Context, partData *partcatalog.PartData)
 
 }
 
+// --------------------------------------------------------------------------------------------
+// findAllDownloads processes all of the content in the DOM looking for the signature download URLS
+func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selection) spiderdata.DownloadEntMap {
+	result := spiderdata.DownloadEntMap{}
+	// fmt.Printf("findAllDownloads parent='%v'\n", root.Parent().Text())
+	root.Parent().Find("a.product-documents__link").Each(func(i int, elem *goquery.Selection) {
+		//<a target="_blank" class="product-documents__link" href="https://andymark-weblinc.netdna-ssl.com/media/W1siZiIsIjIwMTgvMTEvMDYvMTUvMDIvMTQvNTMwZjE4YmMtMmM5NS00Yzk3LTg3OWMtZjNmYzI1MTllMzJiL2FtLTMyODQgMzJ0IE5pbmphIFN0YXIgU3Byb2NrZXQuU1RFUCJdXQ/am-3284%2032t%20Ninja%20Star%20Sprocket.STEP?sha=9834a1285a141ddc">am-3284 32t Ninja Star Sprocket.STEP</a>
+		title := strings.TrimSpace(elem.Text())
+		dlurl, foundurl := elem.Attr("href")
+		fmt.Printf("Found a on '%v' href=%v\n", elem.Text(), dlurl)
+
+		if title == "" {
+			spiderdata.OutputError(ctx, "No Title found for url %s on %s\n", dlurl, url)
+		} else if !foundurl {
+			spiderdata.OutputError(ctx, "No URL found associated with %s on %s\n", title, url)
+		} else if strings.HasSuffix(strings.ToUpper(title), ".STEP") ||
+			strings.HasSuffix(strings.ToUpper(title), ".STEP.ZIP") ||
+			strings.HasSuffix(strings.ToUpper(title), ".STP") ||
+			strings.HasSuffix(strings.ToUpper(title), ".STL") ||
+			strings.HasSuffix(strings.ToUpper(title), ".SLDDRW") {
+			m := regexp.MustCompile(`[ \.].*$`)
+			title = m.ReplaceAllString(title, "")
+			result[title] = spiderdata.DownloadEnt{URL: dlurl, Used: false}
+			// fmt.Printf("Save Download '%s'='%s'\n", title, dlurl)
+		}
+	})
+	return result
+}
+
+// --------------------------------------------------------------------------------------------
+// getDownloadURL looks in the download map for a matching entry and returns the corresponding URL, marking it as used
+// from the list of downloads so that we know what is left over
+func getDownloadURL(ctx *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
+	result = "<NOMODEL:" + sku + ">"
+	ent, found := downloadurls[sku]
+	if found {
+		result = ent.URL
+		downloadurls[sku] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
+	} else {
+		// We didn't find the sku in the list, but it is possible that they misnamed it.
+		// For example https://www.servocity.com/8mm-4-barrel  has a SKU of 545314
+		// But the text for the URL is mistyped as '535314' but it links to 'https://www.servocity.com/media/attachment/file/5/4/545314.zip'
+		// So we want to try to use it
+		for key, element := range downloadurls {
+			if !element.Used && strings.Contains(element.URL, sku) {
+				result = element.URL
+				downloadurls[key] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
+			}
+		}
+	}
+	return
+}
+
+func processProductBrowse(ctx *spiderdata.Context, productname string, url string, product *goquery.Selection) (found bool) {
+	found = false
+	spiderdata.OutputCategory(ctx, productname, true)
+	product.Find("div.product-summary a.product-summary__media-link").Each(func(i int, linked *goquery.Selection) {
+		impression, hassimpression := linked.Attr("data-analytics-product-impression")
+		itemurl, hasurl := linked.Attr("href")
+		if hassimpression && hasurl {
+			var keys map[string]interface{}
+			json.Unmarshal([]byte(impression), &keys)
+			name := keys["name"]
+			sku := keys["sku"]
+			fmt.Printf(" Browse: name '%v' sku '%v' url '%v'\n", name, sku, itemurl)
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, itemurl, productname)
+			}
+			found = true
+		}
+	})
+	return
+}
+
+func processProductDetail(ctx *spiderdata.Context, productname string, url string, product *goquery.Selection) (found bool) {
+	found = false
+
+	spiderdata.OutputCategory(ctx, productname, true)
+	downloadurls := findAllDownloads(ctx, url, product)
+
+	productData, hasdata := product.Attr("data-analytics")
+	if hasdata {
+		var keys map[string]interface{}
+		json.Unmarshal([]byte(productData), &keys)
+		payload := keys["payload"].(map[string]interface{})
+		name := payload["name"].(string)
+		sku := ""
+		skuelem := payload["sku"]
+		if skuelem != nil {
+			sku = skuelem.(string)
+		} else {
+			skuelem = payload["id"]
+			if skuelem != nil {
+				sku = skuelem.(string)
+			}
+		}
+
+		spiderdata.OutputProduct(ctx, name, sku, url, getDownloadURL(ctx, sku, downloadurls), false, nil)
+		found = true
+	}
+	return
+}
+
+func processProductSelection(ctx *spiderdata.Context, productname string, url string, product *goquery.Selection) (found bool) {
+	found = false
+	spiderdata.OutputCategory(ctx, productname, true)
+	localname := product.Find("h1.product-details__heading").Text()
+	// fmt.Printf("ProcessProductSelection\n")
+	changeset := product.Find("div.select-menu select")
+
+	downloadurls := findAllDownloads(ctx, url, product)
+	if changeset.Children().Length() > 0 {
+		changeset.Find("option").Each(func(i int, option *goquery.Selection) {
+			value, hasval := option.Attr("value")
+			if hasval {
+				/// The value generally is of the form:  descr (sku)
+				// So we want to split on the left paren
+				pos := strings.Index(value, " (")
+				if pos >= 0 {
+					namepart := value[:pos-1]
+					sku := value[pos+2 : len(value)-1]
+					spiderdata.OutputProduct(ctx, localname+" "+namepart, sku, url, getDownloadURL(ctx, sku, downloadurls), false, nil)
+					found = true
+				}
+			}
+		})
+	}
+	return
+}
+
 // getBreadCrumbName returns the breadcrumb associated with a document
 // A typical one looks like this:
 //     <div class="breadcrumbs">
@@ -197,11 +329,11 @@ func CheckAndyMarkMatch(ctx *spiderdata.Context, partData *partcatalog.PartData)
 func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selection) string {
 	result := ""
 	prevresult := ""
-	bc.Find("li.breadcrumb").Each(func(i int, li *goquery.Selection) {
+	bc.Find("span.breadcrumbs__node").Each(func(i int, li *goquery.Selection) {
 		name := ""
 		url := ""
 		// See if we have an <a> or a <strong> under the section
-		li.Find("a.breadcrumb-label").Each(func(i int, a *goquery.Selection) {
+		li.Find("a.breadcrumbs__link").Each(func(i int, a *goquery.Selection) {
 			name = a.Text()
 			urlloc, hasurl := a.Attr("href")
 			if hasurl {
@@ -236,64 +368,6 @@ func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selectio
 	return result
 }
 
-//
-// <li class="primary-nav__item primary-nav__item--parent" data-primary-nav-content="5bbf4f7d61a10d68088ef08a">
-// <a class="primary-nav__link" data-analytics="{&quot;event&quot;:&quot;primaryNavigationClick&quot;,&quot;domEvent&quot;:&quot;click&quot;,&quot;payload&quot;:{&quot;name&quot;:&quot;New Products&quot;,&quot;url&quot;:&quot;/categories/new&quot;}}" href="/categories/new"><span class="primary-nav__link-text">New &amp; Deals</span>
-// <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="primary-nav__link-icon svg-icon svg-icon--tiny"><title>Link with drop down menu</title><path d="M12 18l1-.8 10.4-8.9L21.5 6 12 14.1 2.5 6 .6 8.3 11 17.2"></path></svg>
-
-// </a><div class="primary-nav__content">
-// <div class="content-block--hidden-for-small content-block content-block--html" id="content_block_5bd34acf61a10d293f964439" data-analytics="{&quot;event&quot;:&quot;contentBlockDisplay&quot;,&quot;payload&quot;:{&quot;id&quot;:&quot;5bd34acf61a10d293f964439&quot;,&quot;type&quot;:&quot;html&quot;,&quot;position&quot;:0,&quot;data&quot;:{&quot;html&quot;:&quot;\u003cdiv class=\&quot;taxonomy-content-block\&quot;\u003e\r\n\t\u003cdiv class=\&quot;taxonomy-content-block--one-column\&quot;\u003e\r\n\t\t\u003cspan class=\&quot;taxonomy-content-block__menu-heading-custom taxonomy-content-block__centered\&quot;\u003e\r\n\t\t\t\u003ca href=\&quot;/categories/new\&quot;\u003eNew Products\u003c/a\u003e\r\n\t\t\u003c/span\u003e\r\n\t\t\u003cul class=\&quot;taxonomy-content-block__menu-custom\&quot;\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/merchandise\&quot;\u003eAndyMark Merchandise\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/clearance\&quot;\u003eClearance \u0026 Discontinued\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/on-sale-now\&quot;\u003eAll On Sale Now!\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/new-products-new-for-2021\&quot;\u003eNew for 2021\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/sporting-playground-equipment\&quot;\u003eSporting \u0026 Playground Equipment\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\u003c/ul\u003e\r\n\t\u003c/div\u003e\r\n\u003c/div\u003e&quot;}}}" data-hidden-block-css-content="Block hidden at this breakpoint"><div class="html-content-block"><div class="taxonomy-content-block">
-// 	<div class="taxonomy-content-block--one-column">
-// 		<span class="taxonomy-content-block__menu-heading-custom taxonomy-content-block__centered">
-// 			<a href="/categories/new">New Products</a>
-// 		</span>
-// 		<ul class="taxonomy-content-block__menu-custom">
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/merchandise">AndyMark Merchandise</a>
-// 			</li>
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/clearance">Clearance &amp; Discontinued</a>
-// 			</li>
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/on-sale-now">All On Sale Now!</a>
-// 			</li>
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/new-products-new-for-2021">New for 2021</a>
-// 			</li>
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/sporting-playground-equipment">Sporting &amp; Playground Equipment</a>
-// 			</li>
-// 		</ul>
-// 	</div>
-// </div></div>
-// </div><div class="content-block--hidden-for-medium content-block--hidden-for-wide content-block--hidden-for-x-wide content-block--hidden-for-xx-wide content-block content-block--html" id="content_block_5be8e4b9fe93c67bb3df62f3" data-analytics="{&quot;event&quot;:&quot;contentBlockDisplay&quot;,&quot;payload&quot;:{&quot;id&quot;:&quot;5be8e4b9fe93c67bb3df62f3&quot;,&quot;type&quot;:&quot;html&quot;,&quot;position&quot;:1,&quot;data&quot;:{&quot;html&quot;:&quot;\u003cdiv class=\&quot;taxonomy-content-block\&quot;\u003e\r\n\t\u003cdiv class=\&quot;taxonomy-content-block--five-column\&quot;\u003e\r\n\t\t\u003cspan class=\&quot;taxonomy-content-block__menu-heading-custom taxonomy-content-block__centered\&quot;\u003e\r\n\t\t\t\u003ca href=\&quot;/categories/new\&quot;\u003eNew Products\u003c/a\u003e\r\n\t\t\u003c/span\u003e\r\n\t\t\u003cul class=\&quot;taxonomy-content-block__menu-custom\&quot;\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/merchandise\&quot;\u003eAndyMark Merchandise\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/clearance\&quot;\u003eClearance \u0026 Discontinued\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/on-sale-now\&quot;\u003eAll On Sale Now!\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/new-products-new-for-2021\&quot;\u003eNew for 2021\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/sporting-playground-equipment\&quot;\u003eSporting \u0026 Playground Equipment\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\u003c/ul\u003e\r\n\t\u003c/div\u003e\r\n\u003c/div\u003e&quot;}}}" data-hidden-block-css-content="Block hidden at this breakpoint"><div class="html-content-block"><div class="taxonomy-content-block">
-// 	<div class="taxonomy-content-block--five-column">
-// 		<span class="taxonomy-content-block__menu-heading-custom taxonomy-content-block__centered">
-// 			<a href="/categories/new">New Products</a>
-// 		</span>
-// 		<ul class="taxonomy-content-block__menu-custom">
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/merchandise">AndyMark Merchandise</a>
-// 			</li>
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/clearance">Clearance &amp; Discontinued</a>
-// 			</li>
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/on-sale-now">All On Sale Now!</a>
-// 			</li>
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/new-products-new-for-2021">New for 2021</a>
-// 			</li>
-// 			<li class="taxonomy-content-block__menu-item-custom">
-// 				<a href="/categories/sporting-playground-equipment">Sporting &amp; Playground Equipment</a>
-// 			</li>
-// 		</ul>
-// 	</div>
-// </div></div>
-// </div>
-// </div></li>
-//
-
 var skipMenus = map[string]bool{"New & Deals": true, "View All": true, "Gift Card": true}
 
 func CacheNav(ctx *spiderdata.Context, nav *goquery.Selection) {
@@ -317,9 +391,9 @@ func CacheNav(ctx *spiderdata.Context, nav *goquery.Selection) {
 		}
 		_, skipItem := skipMenus[navtitle]
 		if skipItem {
-			fmt.Printf("Skipping %v\n", navtitle)
+			// fmt.Printf("Skipping %v\n", navtitle)
 		} else {
-			fmt.Printf("Caching '%v'\n", navtitle)
+			// fmt.Printf("Caching '%v'\n", navtitle)
 
 			if hasnavcontent {
 				ctx.G.BreadcrumbMap[menuPrefix+navcontent] = navtitle
@@ -328,14 +402,6 @@ func CacheNav(ctx *spiderdata.Context, nav *goquery.Selection) {
 		}
 	})
 }
-
-///
-// New & Deals  Skip
-// Bundles
-// Mechanical
-// Electrical
-// View All  - Skip
-// FIRST
 
 var fixMenus = map[string]string{"Bundles > All Bundles": "Bundles"}
 
@@ -356,9 +422,11 @@ func CacheNavMenu(ctx *spiderdata.Context, navtitle string, l2menu *goquery.Sele
 
 		l2titletext := navtitle + " > " + l2text
 		if hashref {
-			fmt.Printf("L2 Found %v at %v\n", l2titletext, l2href)
+			// fmt.Printf("L2 Found %v at %v\n", l2titletext, l2href)
 			if l2href != "" {
-				spiderdata.EnqueURL(ctx, l2href, l2titletext)
+				if !ctx.G.SingleOnly {
+					spiderdata.EnqueURL(ctx, l2href, l2titletext)
+				}
 				// If we are doing the FIRST stuff, we only need to get the top level
 				if processl3 {
 					// We have the second level title, so we need to iterate over all the children
@@ -371,8 +439,10 @@ func CacheNavMenu(ctx *spiderdata.Context, navtitle string, l2menu *goquery.Sele
 							l3titletext = fixtitle
 						}
 						if hashref {
-							fmt.Printf("L3 Found %v at %v\n", l3titletext, l3href)
-							spiderdata.EnqueURL(ctx, l3href, l3titletext)
+							// fmt.Printf("L3 Found %v at %v\n", l3titletext, l3href)
+							if !ctx.G.SingleOnly {
+								spiderdata.EnqueURL(ctx, l3href, l3titletext)
+							}
 						}
 					})
 				}
@@ -381,80 +451,18 @@ func CacheNavMenu(ctx *spiderdata.Context, navtitle string, l2menu *goquery.Sele
 	})
 }
 
-////
-// <div id='navigation'>
-//     <div class='primary-nav__content'>
-// 	       <div class="content-block--hidden-for-small content-block content-block--html" id="content_block_5bd34acf61a10d293f964439" data-analytics="{&quot;event&quot;:&quot;contentBlockDisplay&quot;,&quot;payload&quot;:{&quot;id&quot;:&quot;5bd34acf61a10d293f964439&quot;,&quot;type&quot;:&quot;html&quot;,&quot;position&quot;:0,&quot;data&quot;:{&quot;html&quot;:&quot;\u003cdiv class=\&quot;taxonomy-content-block\&quot;\u003e\r\n\t\u003cdiv class=\&quot;taxonomy-content-block--one-column\&quot;\u003e\r\n\t\t\u003cspan class=\&quot;taxonomy-content-block__menu-heading-custom taxonomy-content-block__centered\&quot;\u003e\r\n\t\t\t\u003ca href=\&quot;/categories/new\&quot;\u003eNew Products\u003c/a\u003e\r\n\t\t\u003c/span\u003e\r\n\t\t\u003cul class=\&quot;taxonomy-content-block__menu-custom\&quot;\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/merchandise\&quot;\u003eAndyMark Merchandise\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/clearance\&quot;\u003eClearance \u0026 Discontinued\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/on-sale-now\&quot;\u003eAll On Sale Now!\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/new-products-new-for-2021\&quot;\u003eNew for 2021\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/sporting-playground-equipment\&quot;\u003eSporting \u0026 Playground Equipment\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\u003c/ul\u003e\r\n\t\u003c/div\u003e\r\n\u003c/div\u003e&quot;}}}" data-hidden-block-css-content="Block hidden at this breakpoint">
-// 		       <div class='html-content-block'>
-// 		        	<div class="taxonomy-content-block">
-// 		        		<div class="taxonomy-content-block--one-column">
-// 		        			<span class="taxonomy-content-block__menu-heading-custom taxonomy-content-block__centered">
-// 		        				<a href="/categories/new">New Products</a>
-// 		        			</span>
-// 		        			<ul class="taxonomy-content-block__menu-custom">
-// 		        				<li class="taxonomy-content-block__menu-item-custom">
-// 		        					<a href="/categories/merchandise">AndyMark Merchandise</a>
-// 		        				</li>
-// 		        				<li class="taxonomy-content-block__menu-item-custom">
-// 		        					<a href="/categories/clearance">Clearance & Discontinued</a>
-// 		        				</li>
-// 		        				<li class="taxonomy-content-block__menu-item-custom">
-// 		        					<a href="/categories/on-sale-now">All On Sale Now!</a>
-// 		        				</li>
-// 		        				<li class="taxonomy-content-block__menu-item-custom">
-// 		        					<a href="/categories/new-products-new-for-2021">New for 2021</a>
-// 		        				</li>
-// 		        				<li class="taxonomy-content-block__menu-item-custom">
-// 		        					<a href="/categories/sporting-playground-equipment">Sporting & Playground Equipment</a>
-// 		        				</li>
-// 		        			</ul>
-// 		        		</div>
-// 		        	</div>
-// 		        </div>
-// 	</div>
-// 	<div class="content-block--hidden-for-medium content-block--hidden-for-wide content-block--hidden-for-x-wide content-block--hidden-for-xx-wide content-block content-block--html" id="content_block_5be8e4b9fe93c67bb3df62f3" data-analytics="{&quot;event&quot;:&quot;contentBlockDisplay&quot;,&quot;payload&quot;:{&quot;id&quot;:&quot;5be8e4b9fe93c67bb3df62f3&quot;,&quot;type&quot;:&quot;html&quot;,&quot;position&quot;:1,&quot;data&quot;:{&quot;html&quot;:&quot;\u003cdiv class=\&quot;taxonomy-content-block\&quot;\u003e\r\n\t\u003cdiv class=\&quot;taxonomy-content-block--five-column\&quot;\u003e\r\n\t\t\u003cspan class=\&quot;taxonomy-content-block__menu-heading-custom taxonomy-content-block__centered\&quot;\u003e\r\n\t\t\t\u003ca href=\&quot;/categories/new\&quot;\u003eNew Products\u003c/a\u003e\r\n\t\t\u003c/span\u003e\r\n\t\t\u003cul class=\&quot;taxonomy-content-block__menu-custom\&quot;\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/merchandise\&quot;\u003eAndyMark Merchandise\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/clearance\&quot;\u003eClearance \u0026 Discontinued\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/on-sale-now\&quot;\u003eAll On Sale Now!\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/new-products-new-for-2021\&quot;\u003eNew for 2021\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\t\u003cli class=\&quot;taxonomy-content-block__menu-item-custom\&quot;\u003e\r\n\t\t\t\t\u003ca href=\&quot;/categories/sporting-playground-equipment\&quot;\u003eSporting \u0026 Playground Equipment\u003c/a\u003e\r\n\t\t\t\u003c/li\u003e\r\n\t\t\u003c/ul\u003e\r\n\t\u003c/div\u003e\r\n\u003c/div\u003e&quot;}}}" data-hidden-block-css-content="Block hidden at this breakpoint">
-// 		<div class='html-content-block'>
-// 			<div class="taxonomy-content-block">
-// 				<div class="taxonomy-content-block--five-column">
-// 					<span class="taxonomy-content-block__menu-heading-custom taxonomy-content-block__centered">
-// 						<a href="/categories/new">New Products</a>
-// 					</span>
-// 					<ul class="taxonomy-content-block__menu-custom">
-// 						<li class="taxonomy-content-block__menu-item-custom">
-// 							<a href="/categories/merchandise">AndyMark Merchandise</a>
-// 						</li>
-// 						<li class="taxonomy-content-block__menu-item-custom">
-// 							<a href="/categories/clearance">Clearance & Discontinued</a>
-// 						</li>
-// 						<li class="taxonomy-content-block__menu-item-custom">
-// 							<a href="/categories/on-sale-now">All On Sale Now!</a>
-// 						</li>
-// 						<li class="taxonomy-content-block__menu-item-custom">
-// 							<a href="/categories/new-products-new-for-2021">New for 2021</a>
-// 						</li>
-// 						<li class="taxonomy-content-block__menu-item-custom">
-// 							<a href="/categories/sporting-playground-equipment">Sporting & Playground Equipment</a>
-// 						</li>
-// 					</ul>
-// 				</div>
-// 			</div>
-// 		</div>
-// 	</div>
-// </div>
-// ////
-
 // ParseAndyMarkPage parses a page and adds links to elements found within by the various processors
 func ParseAndyMarkPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := ctx.Cmd.URL().RawPath
+	url := ctx.Cmd.URL().String() // Path
 	found := false
-	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
+	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("div.breadcrumbs"))
 	spiderdata.MarkVisitedURL(ctx, url, breadcrumbs)
 
 	// see if this has been discontinued
 	// isDiscontinued := (doc.Find("p.discontinued").Length() > 0)
 
-	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
+	// fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
 
 	primaryNav := doc.Find("nav.primary-nav")
 	primaryNav.Each(func(i int, nav *goquery.Selection) {
@@ -475,73 +483,50 @@ func ParseAndyMarkPage(ctx *spiderdata.Context, doc *goquery.Document) {
 			})
 		}
 	}
-	// doc.Find("ul.navPages-list").Each(func(i int, categoryproducts *goquery.Selection) {
-	// 	fmt.Printf("Found Navigation List\n")
-	// 	if processSubCategory(ctx, breadcrumbs, categoryproducts) {
-	// 		found = true
-	// 	}
-	// })
-	// if !found {
-	// 	fmt.Printf("Looking for productGrid\n")
-	// 	doc.Find("ul.productGrid,ul.threeColumnProductGrid,div.productTableWrapper").Each(func(i int, product *goquery.Selection) {
-	// 		fmt.Printf("ProcessingProductGrid\n")
-	// 		if processProductGrid(ctx, breadcrumbs, url, product) {
-	// 			found = true
-	// 			// } else if processProductViewWithTable(ctx, breadcrumbs, url, product) {
-	// 			// 	found = true
-	// 		}
-	// 	})
-	// }
-	// if !found {
-	// 	products := doc.Find("div[itemtype=\"http://schema.org/Product\"]")
-	// 	products.Each(func(i int, product *goquery.Selection) {
-	// 		if processProduct(ctx, breadcrumbs, url, product, isDiscontinued, products.Length() > 1) {
-	// 			found = true
-	// 		}
-	// 	})
-	// }
-	// if !found {
-	// 	hasOptions := doc.Find("div.available section.productView-children")
-	// 	if hasOptions.Length() > 0 {
-	// 		products := doc.Find("header.productView-header")
 
-	// 		products.Each(func(i int, product *goquery.Selection) {
-	// 			if processProduct(ctx, breadcrumbs, url, product.Parent(), isDiscontinued, products.Length() > 1) {
-	// 				found = true
-	// 			}
-	// 		})
-	// 	}
-	// }
-	// doc.Find("script").Each(func(i int, product *goquery.Selection) {
-	// 	if processLazyLoad(ctx, breadcrumbs, url, product) {
-	// 		found = true
-	// 	}
-	// })
-	// if !found {
-	// 	doc.Find("table.productTable").Each(func(i int, product *goquery.Selection) {
-	// 		if processProductTableList(ctx, breadcrumbs, url, product) {
-	// 			found = true
-	// 		}
-	// 	})
-	// }
+	if !found {
+		doc.Find("div.product-details--option_selects").Each(func(i int, productselect *goquery.Selection) {
+			// fmt.Printf("Found Product Details Selection\n")
+			if processProductSelection(ctx, breadcrumbs, url, productselect) {
+				found = true
+			}
+		})
+	}
 
-	// // Title is div.page-title h1
-	// // Table is div.category-description div.table-widget-container table
-	// if !found {
-	// 	title := doc.Find("div.page-title h1")
-	// 	table := doc.Find("div.category-description div.table-widget-container table")
-	// 	if title.Length() > 0 && table.Length() > 0 &&
-	// 		processSimpleProductTable(ctx, breadcrumbs, url, title.Text(), doc.Children(), table) {
-	// 		found = true
-	// 	}
-	// }
-	// // Look for any related products to add to the list
-	// doc.Find("div.product-related a[data-card-type]").Each(func(i int, a *goquery.Selection) {
-	// 	urlloc, _ := a.Attr("href")
-	// 	product, _ := a.Attr("title")
-	// 	fmt.Printf("**Related Found item name=%s url=%s\n", product, urlloc)
-	// 	spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
-	// })
+	if !found {
+		doc.Find("div.product-browse").Each(func(i int, productbrowse *goquery.Selection) {
+			// fmt.Printf("Found Product Browse\n")
+			if processProductBrowse(ctx, breadcrumbs, url, productbrowse) {
+				found = true
+			}
+		})
+	}
+
+	if !found {
+		doc.Find("div.product-detail-container").Each(func(i int, product *goquery.Selection) {
+			// fmt.Printf("Found Product Detail Container")
+			if processProductDetail(ctx, breadcrumbs, url, product) {
+				found = true
+			}
+		})
+	}
+
+	if !found {
+		doc.Find("a.category-summary-content-block__content").Each(func(i int, a *goquery.Selection) {
+			url, foundurl := a.Attr("href")
+			if foundurl {
+				// Now we need to compute better breadcrumbs for the link
+				a.Find("span.category-summary-content-block__heading").Each(func(i int, catname *goquery.Selection) {
+					catcrumb := spiderdata.MakeBreadCrumb(ctx, breadcrumbs, catname.Text())
+					if !ctx.G.SingleOnly {
+						spiderdata.EnqueURL(ctx, url, catcrumb)
+					}
+					found = true
+				})
+			}
+		})
+	}
+
 	if !found {
 		// See if they have a meta refresh request for a page which is a redirect
 		doc.Find("meta[http-equiv=refresh]").Each(func(i int, meta *goquery.Selection) {

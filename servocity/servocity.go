@@ -21,6 +21,7 @@ var ServocityTarget = spiderdata.SpiderTarget{
 		"https://www.servocity.com/hardware/",
 		"https://www.servocity.com/kits/",
 	},
+	StripSKU:       true,
 	Seed:           "https://www.servocity.com/electronics/",
 	ParsePageFunc:  ParseServocityPage,
 	CheckMatchFunc: CheckServocityMatch,
