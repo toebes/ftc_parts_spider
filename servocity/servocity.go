@@ -416,7 +416,9 @@ func processSubCategory(ctx *spiderdata.Context, breadcrumbs string, categorypro
 			})
 			fmt.Printf("Found item name=%s url=%s\n", elemtext, url)
 			found = true
-			spiderdata.EnqueURL(ctx, url, breadcrumbs)
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, url, breadcrumbs)
+			}
 		})
 	})
 	return
@@ -433,7 +435,9 @@ func processProductGrid(ctx *spiderdata.Context, breadcrumbs string, url string,
 			product, _ := a.Attr("title")
 			fmt.Printf("**ProductGrid Found item name=%v url=%v on %v\n", product, urlloc, url)
 			found = true
-			spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+			}
 		})
 	}
 	return
@@ -451,7 +455,9 @@ func processProductTableList(ctx *spiderdata.Context, breadcrumbs string, url st
 			product = strings.Trim(strings.ReplaceAll(product, "\n", ""), " ")
 			fmt.Printf("**processProductTableList Found item name=%s url=%s\n", product, urlloc)
 			found = true
-			spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+			}
 		})
 	}
 	return
@@ -495,7 +501,9 @@ func processLazyLoad(ctx *spiderdata.Context, breadcrumbs string, url string, js
 							}
 							urlpart = strings.Trim(urlpart, "\"")
 							found = true
-							spiderdata.EnqueURL(ctx, urlpart, breadcrumbs)
+							if !ctx.G.SingleOnly {
+								spiderdata.EnqueURL(ctx, urlpart, breadcrumbs)
+							}
 						}
 					}
 				}
@@ -918,7 +926,9 @@ func ParseServocityPage(ctx *spiderdata.Context, doc *goquery.Document) {
 		urlloc, _ := a.Attr("href")
 		product, _ := a.Attr("title")
 		fmt.Printf("**Related Found item name=%s url=%s\n", product, urlloc)
-		spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+		if !ctx.G.SingleOnly {
+			spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+		}
 	})
 	if !found {
 		// See if they have a meta refresh request for a page which is a redirect
