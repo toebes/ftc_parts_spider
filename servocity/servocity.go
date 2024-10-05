@@ -239,7 +239,7 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 // --------------------------------------------------------------------------------------------
 // getDownloadURL looks in the download map for a matching entry and returns the corresponding URL, marking it as used
 // from the list of downloads so that we know what is left over
-func getDownloadURL(ctx *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
+func getDownloadURL(_ /*ctx*/ *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
 	result = "<NOMODEL:" + sku + ">"
 	ent, found := downloadurls[sku]
 	if found {
@@ -445,7 +445,7 @@ func processProductGrid(ctx *spiderdata.Context, breadcrumbs string, url string,
 
 // --------------------------------------------------------------------------------------------
 // processProductTableList takes a standard page which has a single product on it and outputs the information
-func processProductTableList(ctx *spiderdata.Context, breadcrumbs string, url string, table *goquery.Selection) (found bool) {
+func processProductTableList(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ string, table *goquery.Selection) (found bool) {
 	found = false
 	// fmt.Printf("Parents found: %d\n", pg.ParentFiltered("div.tab-content").Length())
 	if table.ParentFiltered("div.tab-content").Length() == 0 {
@@ -465,7 +465,7 @@ func processProductTableList(ctx *spiderdata.Context, breadcrumbs string, url st
 
 // --------------------------------------------------------------------------------------------
 // processLazyLoad finds all the lazy loaded sub pages
-func processLazyLoad(ctx *spiderdata.Context, breadcrumbs string, url string, js *goquery.Selection) (found bool) {
+func processLazyLoad(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ string, js *goquery.Selection) (found bool) {
 	jstext := js.Text()
 	pos := strings.Index(jstext, "window.stencilBootstrap(")
 	if pos > 0 {

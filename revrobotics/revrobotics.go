@@ -14,42 +14,24 @@ import (
 // RevRoboticsTarget is the configuration structure for spidering the Rev Robotics website
 var RevRoboticsTarget = spiderdata.SpiderTarget{
 	Outfile:        "rev_robotics.txt",
-	SpreadsheetID:  "19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0",
+	SpreadsheetID:  "1Rs6HgY-WZzOyxMhI53NjcfcuxjO-hh3gsDmO4Jk6PFA", //"19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0",
 	Presets:        []string{},
 	StripSKU:       true,
 	Seed:           "https://www.revrobotics.com/ftc/",
 	ParsePageFunc:  ParseRevRoboticsPage,
 	CheckMatchFunc: CheckRevRoboticsMatch,
 
-	SectionNameDeletes: []string{
-		"Shop by Electrical Connector Style > ",
-		"Shop by Hub Style > ",
-		" Aluminum REX Shafting >",
-		" Stainless Steel D-Shafting >",
-		" > Motor Mounts for AndyMark NeveRest Motors > Motor Mounts for NeveRest Orbital Gear Motors",
-		" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV Core Hex Motor",
-		" > Motor Mounts for REV Robotics Motors > Motor Mounts for REV UltraPlanetary Gearbox",
-		" > XL Series, 3/8\" Width Timing Belts",
-		" > XL Series, 3/8\" Width, Cut Length Timing Belts",
-	},
-	SectionAllowedMap: map[string]string{
-		"637213":   "KITS > Linear Motion Kits",
-		"ASCC8074": "HARDWARE > Lubricants",
-		"555192":   "STRUCTURE > Motor Mounts > Motor Mounts for NeveRest Classic Gear Motors",
-		"555104":   "STRUCTURE > Motor Mounts > Motor Mounts for Econ Spur Gear Motors",
-		"585074":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
-		"585073":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
-		"605638":   "STRUCTURE > X-Rail® > X-Rail® Accessories",
-	},
+	SectionNameDeletes: []string{},
+	SectionAllowedMap:  map[string]string{},
 	SectionEquivalents: [][]string{
-		{"MOTION > Bearings", "MOTION > Linear Bearings"},
-		{"KITS > FTC Kits", "KITS > Linear Motion Kits"},
-		{"MOTION > Couplers > Shop by Coupler Bore", "MOTION > Couplers > "},
-		{"ELECTRONICS > Wiring > Connector Style", "ELECTRONICS > Wiring > "},
-		{"MOTION > Hubs > Servo Hubs", "MOTION > Servos & Accessories > Servo Hubs"},
-		{"MOTION > Servos & Accessories > Servos", "MOTION > Servos & Accessories"},
-		{"STRUCTURE > Adaptors", "MOTION > Hubs"},
-		{"STRUCTURE > Brackets", "STRUCTURE > X-Rail® > X-Rail® Accessories"},
+		// {"MOTION > Bearings", "MOTION > Linear Bearings"},
+		// {"KITS > FTC Kits", "KITS > Linear Motion Kits"},
+		// {"MOTION > Couplers > Shop by Coupler Bore", "MOTION > Couplers > "},
+		// {"ELECTRONICS > Wiring > Connector Style", "ELECTRONICS > Wiring > "},
+		// {"MOTION > Hubs > Servo Hubs", "MOTION > Servos & Accessories > Servo Hubs"},
+		// {"MOTION > Servos & Accessories > Servos", "MOTION > Servos & Accessories"},
+		// {"STRUCTURE > Adaptors", "MOTION > Hubs"},
+		// {"STRUCTURE > Brackets", "STRUCTURE > X-Rail® > X-Rail® Accessories"},
 	},
 }
 
@@ -201,24 +183,26 @@ func CheckRevRoboticsMatch(ctx *spiderdata.Context, partData *partcatalog.PartDa
 
 // getBreadCrumbName returns the breadcrumb associated with a document
 // A typical one looks like this:
-//     <div class="breadcrumbs">
-//     <ul>
-//                     <li class="home">
-//                             <a href="https://www.servocity.com/" title="Go to Home Page">Home</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category30">
-//                             <a href="https://www.servocity.com/motion-components" title="">Motion Components</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category44">
-//                             <a href="https://www.servocity.com/motion-components/linear-motion" title="">Linear Motion</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category87">
-//                             <strong>Linear Bearings</strong>
-//                                     </li>
-//             </ul>
+//
+//	<div class="breadcrumbs">
+//	<ul>
+//	                <li class="home">
+//	                        <a href="https://www.servocity.com/" title="Go to Home Page">Home</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category30">
+//	                        <a href="https://www.servocity.com/motion-components" title="">Motion Components</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category44">
+//	                        <a href="https://www.servocity.com/motion-components/linear-motion" title="">Linear Motion</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category87">
+//	                        <strong>Linear Bearings</strong>
+//	                                </li>
+//	        </ul>
+//
 // </div>
 //
 // What we want to get is the name (the sections in the <a> or the <strong>) while building up a database of matches to
@@ -265,18 +249,73 @@ func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selectio
 	return result
 }
 
-func processSubCategory(ctx *spiderdata.Context, breadcrumbs string, categoryproducts *goquery.Selection) (found bool) {
+func processNavList(ctx *spiderdata.Context, breadcrumbs string, categoryproducts *goquery.Selection) (found bool) {
 	found = false
-	fmt.Printf("processSubCategory\n")
+	// fmt.Printf("processNavList\n")
 	categoryproducts.Find("li.navList-item").Each(func(i int, item *goquery.Selection) {
 		// fmt.Printf("-Found Category product LI element\n")
 		item.Find("a.navList-action").Each(func(i int, elem *goquery.Selection) {
 			url, _ := elem.Attr("href")
-			elemtext := "<NOT FOUND>"
+			// elemtext := "<NOT FOUND>"
+			elemtext, _ := elem.Attr("title")
 			elem.Find("span").Each(func(i int, span *goquery.Selection) {
 				elemtext = span.Text()
 			})
 			fmt.Printf("Found item name=%s url=%s\n", elemtext, url)
+			found = true
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, url, breadcrumbs)
+			}
+		})
+	})
+	return
+}
+
+func processPagination(ctx *spiderdata.Context, breadcrumbs string, categoryproducts *goquery.Selection) (found bool) {
+	found = false
+	// fmt.Printf("processPagination\n")
+	categoryproducts.Find("li.pagination-item:not(.pagination-item--current)").Each(func(i int, item *goquery.Selection) {
+		// fmt.Printf("-Found pagination element\n")
+		item.Find("a").Each(func(i int, elem *goquery.Selection) {
+			url, _ := elem.Attr("href")
+			// elemtext := elem.Text()
+			fmt.Printf("Found pagination item url=%s\n", url)
+			found = true
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, url, breadcrumbs)
+			}
+		})
+	})
+	return
+}
+
+func processSubCategories(ctx *spiderdata.Context, breadcrumbs string, categoryproducts *goquery.Selection) (found bool) {
+	found = false
+	// fmt.Printf("processSubCategories\n")
+	categoryproducts.Find("div.subCategory-name").Each(func(i int, item *goquery.Selection) {
+		// fmt.Printf("-Found subCategory name element\n")
+		item.Find("a").Each(func(i int, elem *goquery.Selection) {
+			url, _ := elem.Attr("href")
+			elemtext := elem.Text()
+			fmt.Printf("Found subCategory item name=%s url=%s\n", elemtext, url)
+			found = true
+			if !ctx.G.SingleOnly {
+				spiderdata.EnqueURL(ctx, url, breadcrumbs)
+			}
+		})
+	})
+	return
+}
+
+func processSubProducts(ctx *spiderdata.Context, breadcrumbs string, categoryproducts *goquery.Selection) (found bool) {
+	found = false
+	// fmt.Printf("processSubProducts\n")
+	categoryproducts.Find("li.productCard").Each(func(i int, item *goquery.Selection) {
+		// fmt.Printf("-Found productCard element\n")
+		item.Find("h4.card-title a").Each(func(i int, elem *goquery.Selection) {
+			url, _ := elem.Attr("href")
+			elemtext := elem.Text()
+			fmt.Printf("Found ProductCard item name=%s url=%s\n", elemtext, url)
 			found = true
 			if !ctx.G.SingleOnly {
 				spiderdata.EnqueURL(ctx, url, breadcrumbs)
@@ -327,7 +366,7 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 // --------------------------------------------------------------------------------------------
 // getDownloadURL looks in the download map for a matching entry and returns the corresponding URL, marking it as used
 // from the list of downloads so that we know what is left over
-func getDownloadURL(ctx *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
+func getDownloadURL(_ /*ctx*/ *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
 	result = "<NOMODEL:" + sku + ">"
 	ent, found := downloadurls[sku]
 	if found {
@@ -374,7 +413,7 @@ func showUnusedURLS(ctx *spiderdata.Context, url string, downloadurls spiderdata
 
 // --------------------------------------------------------------------------------------------
 // processProductGrid takes a standard page which has a single product on it and outputs the information
-func processProductGrid(ctx *spiderdata.Context, breadcrumbs string, url string, pg *goquery.Selection) (found bool) {
+func processProductGrid(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ string, pg *goquery.Selection) (found bool) {
 	found = false
 	// fmt.Printf("Parents found: %d\n", pg.ParentFiltered("div.tab-content").Length())
 	if pg.ParentFiltered("div.tab-content").Length() == 0 {
@@ -394,7 +433,7 @@ func processProductGrid(ctx *spiderdata.Context, breadcrumbs string, url string,
 
 // --------------------------------------------------------------------------------------------
 // processProductGrid takes a standard page which has a single product on it and outputs the information
-func processQaatcList(ctx *spiderdata.Context, breadcrumbs string, url string, pg *goquery.Selection) (found bool) {
+func processQaatcList(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ string, pg *goquery.Selection) (found bool) {
 	found = false
 	// fmt.Printf("Parents found: %d\n", pg.ParentFiltered("div.tab-content").Length())
 	if pg.ParentFiltered("div.tab-content").Length() == 0 {
@@ -715,7 +754,7 @@ func processTable(ctx *spiderdata.Context, productname string, url string, downl
 
 // --------------------------------------------------------------------------------------------
 // processLazyLoad finds all the lazy loaded sub pages
-func processLazyLoad(ctx *spiderdata.Context, breadcrumbs string, url string, js *goquery.Selection) (found bool) {
+func processLazyLoad(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ string, js *goquery.Selection) (found bool) {
 	jstext := js.Text()
 	pos := strings.Index(jstext, "window.stencilBootstrap(")
 	if pos > 0 {
@@ -785,11 +824,23 @@ func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
-	doc.Find("ul.navList").Each(func(i int, categoryproducts *goquery.Selection) {
-		fmt.Printf("Found Navlist\n")
-		if processSubCategory(ctx, breadcrumbs, categoryproducts) {
+	doc.Find("ul.navList").Each(func(i int, navItems *goquery.Selection) {
+		// fmt.Printf("Found Navlist\n")
+		if processNavList(ctx, breadcrumbs, navItems) {
 			found = true
 		}
+	})
+	// Find all the pagination links from this page
+	doc.Find("div.pagination ul.pagination-list").Each(func(i int, pagination *goquery.Selection) {
+		// fmt.Printf("Found Subcategory\n")
+		_ = processPagination(ctx, breadcrumbs, pagination)
+	})
+	doc.Find("div.subCategories").Each(func(i int, subCategories *goquery.Selection) {
+		// fmt.Printf("Found Subcategory\n")
+		_ = processSubCategories(ctx, breadcrumbs, subCategories)
+	})
+	doc.Find("div.productCategoryCompare").Each(func(i int, products *goquery.Selection) {
+		_ = processSubProducts(ctx, breadcrumbs, products)
 	})
 	// qaatc__list
 	if !found {
