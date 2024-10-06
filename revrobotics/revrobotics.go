@@ -330,34 +330,51 @@ func processSubProducts(ctx *spiderdata.Context, breadcrumbs string, categorypro
 func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selection) spiderdata.DownloadEntMap {
 	result := spiderdata.DownloadEntMap{}
 	// fmt.Printf("findAllDownloads parent='%v'\n", root.Parent().Text())
-	root.Parent().Find("a").Each(func(i int, elem *goquery.Selection) {
-		//<a title="REV-31-1425 STEP File" href="/content/cad/REV-31-1425.STEP" download="REV-31-1425.STEP">REV-31-1425 STEP File</a>
-		title := elem.Text()
-		download, hasdownload := elem.Attr("download")
-		j1, _ := elem.Attr("href")
-		fmt.Printf("Found a on '%v' href=%v download=%v hasdownload=%v\n", elem.Text(), j1, download, hasdownload)
-		if hasdownload {
-			fmt.Printf("Found one title=%v\n", title)
-			dlurl, foundurl := elem.Attr("href")
+	// Find h2 elements and filter those containing the text "CAD"
+	root.Parent().Find("h2").Each(func(i int, h2elem *goquery.Selection) {
+		fmt.Printf("Checking against: %v\n", h2elem.Text())
+		if strings.Contains(h2elem.Text(), "CAD") {
+			fmt.Printf("Processing potential Download\n")
+			h2elem.Next().Find("a").Each(func(i int, elem *goquery.Selection) {
 
-			if title != "" && foundurl {
-				// The title often has a string like " STEP" at the end, so we can throw it away
-				title = strings.Replace(title, " STEP", "", -1)
-				title = strings.Replace(title, " File", "", -1)
-				title = strings.Replace(title, " file", "", -1)
-				title = strings.Replace(title, " assembly", "", -1)
-				title = strings.TrimSpace(title)
-				result[title] = spiderdata.DownloadEnt{URL: dlurl, Used: false}
-				fmt.Printf("Save Download '%s'='%s'\n", title, dlurl)
-			} else {
-				if title == "" {
-					spiderdata.OutputError(ctx, "No URL found associated with %s on %s\n", title, url)
-				} else if foundurl {
-					spiderdata.OutputError(ctx, "No Title found for url %s on %s\n", dlurl, url)
+				// <a href="https://revrobotics.com/content/cad/REV-41-1562.STEP" target="_blank" rel="noopener">REV-41-1562 STEP File</a>
+				// <a href="https://cad.onshape.com/documents/06cfe5484b1c923156af9761/w/ba20e3e567a200c0a057448d/e/23c453dec8707802b812c02a">REV-41-1562 Onshape</a>
+				// <a href="https://revrobotics.com/content/docs/REV-41-1562-DR.pdf" target="_blank" rel="noopener">REV-41-1562 Drawing</a>
+				title := elem.Text()
+
+				fmt.Printf("Found one title=%v\n", title)
+				dlurl, foundurl := elem.Attr("href")
+
+				fmt.Printf("Found a on '%v' href=%v\n", elem.Text(), dlurl)
+				if title != "" && foundurl {
+					// The title often has a string like " STEP" at the end, so we can throw it away
+					title = strings.Replace(title, " STEP", "", -1)
+					title = strings.Replace(title, " File", "", -1)
+					title = strings.Replace(title, " file", "", -1)
+					title = strings.Replace(title, " Onshape", "", -1)
+					title = strings.Replace(title, " Drawing", "", -1)
+					title = strings.Replace(title, " assembly", "", -1)
+					title = strings.TrimSpace(title)
+					// We need to do something special to separate out Step, Onshape and Drawings
+					if strings.Contains(dlurl, "cad.onshape") {
+						title = "ONSHAPE:" + title
+					} else if strings.Contains(dlurl, ".STEP") {
+						title = "STEP:" + title
+					} else if strings.Contains(dlurl, ".pdf") {
+						title = "DRAWING:" + title
+					}
+					result[title] = spiderdata.DownloadEnt{URL: dlurl, Used: false}
+					fmt.Printf("Save Download '%s'='%s'\n", title, dlurl)
 				} else {
-					spiderdata.OutputError(ctx, "No URL or Title found with:%s on %s\n", elem.Text(), url)
+					if title == "" {
+						spiderdata.OutputError(ctx, "No URL found associated with %s on %s\n", title, url)
+					} else if foundurl {
+						spiderdata.OutputError(ctx, "No Title found for url %s on %s\n", dlurl, url)
+					} else {
+						spiderdata.OutputError(ctx, "No URL or Title found with:%s on %s\n", elem.Text(), url)
+					}
 				}
-			}
+			})
 		}
 	})
 	return result
@@ -366,21 +383,77 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 // --------------------------------------------------------------------------------------------
 // getDownloadURL looks in the download map for a matching entry and returns the corresponding URL, marking it as used
 // from the list of downloads so that we know what is left over
+func getKeyDownloadURL(sku string, downloadurls spiderdata.DownloadEntMap, key string) (result string, found bool) {
+	result = ""
+	found = false
+
+	keylook := sku
+	if key != "" {
+		keylook = key + ":" + sku
+	}
+
+	ent, found1 := downloadurls[keylook]
+	if found1 {
+		result = ent.URL
+		found = true
+		downloadurls[keylook] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
+	} else {
+		// See if our SKU ended with a -PK<n> and try again
+		// Define a regular expression that matches "-PK" followed by one or more digits at the end of the string
+		re := regexp.MustCompile(`-PK\d+$`)
+		// Replace the matched pattern with an empty string (remove it)
+		keylook = re.ReplaceAllString(keylook, "")
+		ent, found = downloadurls[keylook]
+		if found {
+			result = ent.URL
+			downloadurls[keylook] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
+		}
+	}
+	return
+}
+
+// --------------------------------------------------------------------------------------------
+// getDownloadURL looks in the download map for a matching entry and returns the corresponding URL, marking it as used
+// from the list of downloads so that we know what is left over
 func getDownloadURL(_ /*ctx*/ *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
 	result = "<NOMODEL:" + sku + ">"
-	ent, found := downloadurls[sku]
+
+	// We will first look for a STEP: version and use it if found, otherwise we go for the DRAWING: version
+	// or just a plain one.  We don't touch the ONSHAPE:
+	// title = "ONSHAPE:" + title
+	// title = "STEP:" + title
+	// title = "DRAWING:" + title
+
+	// See if there was a STEP model in the list of downloads
+	stepurl, found := getKeyDownloadURL(sku, downloadurls, "STEP")
 	if found {
-		result = ent.URL
-		downloadurls[sku] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
+		// Yes, we use it
+		result = stepurl
+		// if there is a drawing, we need to mark it as used
+		_, _ = getKeyDownloadURL(sku, downloadurls, "DRAWING")
 	} else {
-		// We didn't find the sku in the list, but it is possible that they misnamed it.
-		// For example https://www.servocity.com/8mm-4-barrel  has a SKU of 545314
-		// But the text for the URL is mistyped as '535314' but it links to 'https://www.servocity.com/media/attachment/file/5/4/545314.zip'
-		// So we want to try to use it
-		for key, element := range downloadurls {
-			if !element.Used && strings.Contains(element.URL, sku) {
-				result = element.URL
-				downloadurls[key] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
+		// No STEP model, how about just a drawing?
+		drawingurl, found := getKeyDownloadURL(sku, downloadurls, "DRAWING")
+		if found {
+			// Perfect, we use the drawing
+			result = drawingurl
+		} else {
+			// No STEP or DRAWING, check for just a plain link
+			url, found := getKeyDownloadURL(sku, downloadurls, "")
+			if found {
+				// We got the plain link.
+				result = url
+			} else {
+				// We didn't find the sku in the list, but it is possible that they misnamed it.
+				// For example https://www.servocity.com/8mm-4-barrel  has a SKU of 545314
+				// But the text for the URL is mistyped as '535314' but it links to 'https://www.servocity.com/media/attachment/file/5/4/545314.zip'
+				// So we want to try to use it
+				for key, element := range downloadurls {
+					if !element.Used && strings.Contains(element.URL, sku) {
+						result = element.URL
+						downloadurls[key] = spiderdata.DownloadEnt{URL: element.URL, Used: true}
+					}
+				}
 			}
 		}
 	}
@@ -453,10 +526,11 @@ func processQaatcList(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ str
 // --------------------------------------------------------------------------------------------
 // processProduct takes a standard page which has a single product on it and outputs the information
 func processProduct(ctx *spiderdata.Context, productname string, url string, product *goquery.Selection) (found bool) {
+	outpad := make([]string, 7)
 	found = false
 	spiderdata.OutputCategory(ctx, productname, true)
 	localname := product.Find("div.productView-product h1.productView-title").Text()
-	sku := product.Find("div.productSKU .productView-info-value").Text()
+	sku := product.Find("div.productView-product .productView-info-value").Text()
 	fmt.Printf("Process Product\n")
 	changeset := product.Find("[data-product-option-change]")
 	//  <div data-product-option-change="" style="">
@@ -497,12 +571,14 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 						itemname += " " + label.Text()
 					}
 				}
-				spiderdata.OutputProduct(ctx, itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), false, nil)
+				outpad[6], _ = getKeyDownloadURL(sku, downloadurls, "ONSHAPE")
+				spiderdata.OutputProduct(ctx, itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), false, outpad)
 
 			})
 		} else {
 			fmt.Printf("No Changeset\n")
-			spiderdata.OutputProduct(ctx, localname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, nil)
+			outpad[6], _ = getKeyDownloadURL(sku, downloadurls, "ONSHAPE")
+			spiderdata.OutputProduct(ctx, localname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, outpad)
 		}
 		found = true
 	}
