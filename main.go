@@ -53,8 +53,8 @@ var (
 	}
 
 	// Command-line flags
-	target        = flag.String("target", "gobilda", "Target vendor to spider")
-	seed          = flag.String("seed", "https://www.gobilda.com/", "seed URL")
+	target        = flag.String("target", "rev", "Target vendor to spider")
+	seed          = flag.String("seed", "https://www.revrobotics.com/ftc", "seed URL")
 	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
 	cancelAtURL   = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
 	stopAfter     = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
@@ -163,8 +163,9 @@ func main() {
 					fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
 					return
 				}
+				url := res.Request.URL.String()
 
-				muxcontext := spiderdata.Context{Cmd: ctx.Cmd, Q: ctx.Q, G: context.G}
+				muxcontext := spiderdata.Context{Cmd: ctx.Cmd, Q: ctx.Q, G: context.G, Url: url}
 				// Enqueue all links as HEAD requests
 				context.G.TargetConfig.ParsePageFunc(&muxcontext, doc)
 			}

@@ -16,7 +16,7 @@ var RevRoboticsTarget = spiderdata.SpiderTarget{
 	Outfile:        "rev_robotics.txt",
 	SpreadsheetID:  "1Rs6HgY-WZzOyxMhI53NjcfcuxjO-hh3gsDmO4Jk6PFA", //"19Mc9Uj0zoaRr_KmPncf_svNOp9WqIgrzaD7fEiNlBr0",
 	Presets:        []string{},
-	StripSKU:       true,
+	StripSKU:       false,
 	Seed:           "https://www.revrobotics.com/ftc/",
 	ParsePageFunc:  ParseRevRoboticsPage,
 	CheckMatchFunc: CheckRevRoboticsMatch,
@@ -141,8 +141,8 @@ func CheckRevRoboticsMatch(ctx *spiderdata.Context, partData *partcatalog.PartDa
 		if !strings.EqualFold(partData.URL, entry.URL) {
 			// In the case where there was a sku= on the URL we want to keep the one with it
 			urlString := partData.URL
-			newURL, strippedNew := spiderdata.CleanURL(partData.URL)
-			oldURL, strippedOld := spiderdata.CleanURL(entry.URL)
+			newURL, strippedNew := spiderdata.CleanURL(ctx, partData.URL)
+			oldURL, strippedOld := spiderdata.CleanURL(ctx, entry.URL)
 			if !strippedNew && strippedOld {
 				urlString = entry.URL
 			}
@@ -332,9 +332,9 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 	// fmt.Printf("findAllDownloads parent='%v'\n", root.Parent().Text())
 	// Find h2 elements and filter those containing the text "CAD"
 	root.Parent().Find("h2").Each(func(i int, h2elem *goquery.Selection) {
-		fmt.Printf("Checking against: %v\n", h2elem.Text())
+		// fmt.Printf("Checking against: %v\n", h2elem.Text())
 		if strings.Contains(h2elem.Text(), "CAD") {
-			fmt.Printf("Processing potential Download\n")
+			// fmt.Printf("Processing potential Download\n")
 			h2elem.Next().Find("a").Each(func(i int, elem *goquery.Selection) {
 
 				// <a href="https://revrobotics.com/content/cad/REV-41-1562.STEP" target="_blank" rel="noopener">REV-41-1562 STEP File</a>
@@ -342,10 +342,10 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 				// <a href="https://revrobotics.com/content/docs/REV-41-1562-DR.pdf" target="_blank" rel="noopener">REV-41-1562 Drawing</a>
 				title := elem.Text()
 
-				fmt.Printf("Found one title=%v\n", title)
+				// fmt.Printf("Found one title=%v\n", title)
 				dlurl, foundurl := elem.Attr("href")
 
-				fmt.Printf("Found a on '%v' href=%v\n", elem.Text(), dlurl)
+				// fmt.Printf("Found a on '%v' href=%v\n", elem.Text(), dlurl)
 				if title != "" && foundurl {
 					// The title often has a string like " STEP" at the end, so we can throw it away
 					title = strings.Replace(title, " STEP", "", -1)
@@ -354,7 +354,7 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 					title = strings.Replace(title, " Onshape", "", -1)
 					title = strings.Replace(title, " Drawing", "", -1)
 					title = strings.Replace(title, " assembly", "", -1)
-					title = strings.TrimSpace(title)
+					title = fixSku(strings.TrimSpace(title))
 					// We need to do something special to separate out Step, Onshape and Drawings
 					if strings.Contains(dlurl, "cad.onshape") {
 						title = "ONSHAPE:" + title
@@ -375,9 +375,56 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 					}
 				}
 			})
+		} else if strings.Contains(h2elem.Text(), "Product Options") {
+
+			// We need to look for buttons in a table
+			h2elem.Next().Find("a[name]").Each(func(i int, aelem *goquery.Selection) {
+				title, _ := aelem.Attr("name")
+				title = fixSku(title)
+				// We need to go to the parent tr and find all the A elements underneath
+				aelem.ParentsFiltered("tr").First().Find("a").Each(func(i int, elem *goquery.Selection) {
+					dlurl, foundurl := elem.Attr("href")
+					_, hasname := elem.Attr("name")
+					// We need to throw away <a href="https://www.revrobotics.com/15mm-metal-brackets/#REV-41-1303">REV-41-1303-PK8</a>
+					if hasname || strings.Contains(dlurl, "/#") {
+						return
+						// foundurl = false
+						// hasname = true
+					}
+					atitle := title
+					if title != "" && foundurl {
+						// We need to do something special to separate out Step, Onshape and Drawings
+						if strings.Contains(dlurl, "cad.onshape") {
+							atitle = "ONSHAPE:" + atitle
+						} else if strings.Contains(dlurl, ".STEP") {
+							atitle = "STEP:" + atitle
+						} else if strings.Contains(dlurl, ".pdf") {
+							atitle = "DRAWING:" + atitle
+						}
+						result[atitle] = spiderdata.DownloadEnt{URL: dlurl, Used: false}
+						fmt.Printf("Save Download '%s'='%s'\n", atitle, dlurl)
+					} else {
+						if title == "" {
+							spiderdata.OutputError(ctx, "No URL found associated with %s on %s\n", title, url)
+						} else if foundurl {
+							spiderdata.OutputError(ctx, "No Title found for url %s on %s\n", dlurl, url)
+						} else {
+							spiderdata.OutputError(ctx, "No URL or Title found with:%s on %s\n", elem.Text(), url)
+						}
+					}
+				})
+			})
 		}
 	})
 	return result
+}
+
+func fixSku(sku string) (result string) {
+	// See if our SKU ended with a -PK<n> and try again
+	// Define a regular expression that matches "-PK" followed by one or more digits at the end of the string
+	re := regexp.MustCompile(`-PK\d+$`)
+	result = re.ReplaceAllString(sku, "")
+	return
 }
 
 // --------------------------------------------------------------------------------------------
@@ -399,10 +446,8 @@ func getKeyDownloadURL(sku string, downloadurls spiderdata.DownloadEntMap, key s
 		downloadurls[keylook] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
 	} else {
 		// See if our SKU ended with a -PK<n> and try again
-		// Define a regular expression that matches "-PK" followed by one or more digits at the end of the string
-		re := regexp.MustCompile(`-PK\d+$`)
 		// Replace the matched pattern with an empty string (remove it)
-		keylook = re.ReplaceAllString(keylook, "")
+		keylook = fixSku(keylook)
 		ent, found = downloadurls[keylook]
 		if found {
 			result = ent.URL
@@ -531,7 +576,10 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 	spiderdata.OutputCategory(ctx, productname, true)
 	localname := product.Find("div.productView-product h1.productView-title").Text()
 	sku := product.Find("div.productView-product .productView-info-value").Text()
-	fmt.Printf("Process Product\n")
+	// We need to strip off the -PK<n>
+	sku = fixSku(sku)
+
+	// fmt.Printf("Process Product\n")
 	changeset := product.Find("[data-product-option-change]")
 	//  <div data-product-option-change="" style="">
 	//    <div class="form-field" data-product-attribute="set-radio">
@@ -548,40 +596,39 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 	//  </div>
 
 	downloadurls := findAllDownloads(ctx, url, product)
-	if sku != "" {
-		if changeset.Children().Length() > 0 {
-			fmt.Printf("Has Changeset\n")
-			changeset.Find("input").Each(func(i int, input *goquery.Selection) {
-				itemname := localname
-				itemsku := sku
-				// We have a pair like this:
-				//      <input class="form-radio" type="radio" id="attribute_radio_114" name="attribute[53]" value="114" required="" data-state="false">
-				//      <label data-product-attribute-value="114" class="form-label" for="attribute_radio_114">30cm</label>
-				_, ischecked := input.Attr("checked")
-				// Unfortunately we don't know how to recover the item SKU.  it comes from some external file that we didn't load
-				if !ischecked {
-					itemsku = sku[:7] + "????" // Take the REV-nn- portion of the SKU
-				}
-				// But we do need to find the item name
-				val, hasval := input.Attr("value")
-				if hasval {
-					tofind := "[data-product-attribute-value=\"" + val + "\"]"
-					label := changeset.Find(tofind)
-					if label.Length() > 0 {
-						itemname += " " + label.Text()
+
+	if changeset.Length() > 0 {
+		//fmt.Printf("Has Changeset\n")
+		changeset.Find("input").Each(func(i int, input *goquery.Selection) {
+			id, hasid := input.Attr("id")
+			if hasid {
+				label := input.Parent().Find(fmt.Sprintf("label[for='%s']", id))
+				if label.Length() > 0 {
+					labelText := label.Text()
+					// Regular expression to capture both the SKU and the description
+					re := regexp.MustCompile(`\((REV-[\d-]+)(?:-PK\d+)?\)[\s ]+(.+?)[\s ]*-\s*\d+[\s ]*Pack`)
+
+					matches := re.FindStringSubmatch(labelText)
+					if len(matches) > 2 {
+						itemsku := matches[1]
+						itemname := matches[2]
+						// We have a pair like this:
+						//      <input class="form-radio" type="radio" id="attribute_radio_114" name="attribute[53]" value="114" required="" data-state="false">
+						//      <label data-product-attribute-value="114" class="form-label" for="attribute_radio_114">30cm</label>
+						outpad[6], _ = getKeyDownloadURL(itemsku, downloadurls, "ONSHAPE")
+						spiderdata.OutputProduct(ctx, itemname, itemsku, url, getDownloadURL(ctx, itemsku, downloadurls), false, outpad)
 					}
 				}
-				outpad[6], _ = getKeyDownloadURL(sku, downloadurls, "ONSHAPE")
-				spiderdata.OutputProduct(ctx, itemname, itemsku, url, getDownloadURL(ctx, sku, downloadurls), false, outpad)
-
-			})
-		} else {
-			fmt.Printf("No Changeset\n")
-			outpad[6], _ = getKeyDownloadURL(sku, downloadurls, "ONSHAPE")
-			spiderdata.OutputProduct(ctx, localname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, outpad)
-		}
+			}
+		})
+		found = true
+	} else if sku != "" {
+		// fmt.Printf("No Changeset\n")
+		outpad[6], _ = getKeyDownloadURL(sku, downloadurls, "ONSHAPE")
+		spiderdata.OutputProduct(ctx, localname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, outpad)
 		found = true
 	}
+
 	showUnusedURLS(ctx, url, downloadurls)
 	return
 }
@@ -896,7 +943,8 @@ func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url 
 // ParseRevRoboticsPage parses a page and adds links to elements found within by the various processors
 func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := ctx.Cmd.URL().String()
+	url := ctx.Url
+
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)

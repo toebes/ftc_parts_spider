@@ -52,6 +52,7 @@ type Globals struct {
 // Context provides the globals used everywhere
 type Context struct {
 	Cmd fetchbot.Command
+	Url string
 	Q   *fetchbot.Queue
 	G   *Globals
 }
@@ -116,14 +117,16 @@ func MakeBreadCrumb(ctx *Context, base string, toadd string) (result string) {
 }
 
 // CleanURL removes any selector from a URL returning the cleaned string and an indication that it was removed
-func CleanURL(url string) (result string, stripped bool) {
+func CleanURL(ctx *Context, url string) (result string, stripped bool) {
 	stripped = false
-	// Trim off any ?sku= on the URL
-	pos := strings.Index(url, "?")
-	if pos > 0 { // note > and not >= because we don't want to get an empty URL
-		// Trim off any ?sku parameters
-		url = url[:pos]
-		stripped = true
+	if ctx.G.StripSKU {
+		// Trim off any ?sku= on the URL
+		pos := strings.Index(url, "?")
+		if pos > 0 { // note > and not >= because we don't want to get an empty URL
+			// Trim off any ?sku parameters
+			url = url[:pos]
+			stripped = true
+		}
 	}
 	result = url
 	return
@@ -143,7 +146,7 @@ func EnqueURL(ctx *Context, url string, breadcrumb string) {
 			url = u.String()
 		}
 		// Trim off any sku= on the URL
-		urlString, _ := CleanURL(url)
+		urlString, _ := CleanURL(ctx, url)
 		_, found := ctx.G.BreadcrumbMap[urlString]
 		if !found {
 			if _, err := ctx.Q.SendStringHead(urlString); err != nil {

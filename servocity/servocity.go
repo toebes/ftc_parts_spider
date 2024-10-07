@@ -163,8 +163,8 @@ func CheckServocityMatch(ctx *spiderdata.Context, partData *partcatalog.PartData
 		if !strings.EqualFold(partData.URL, entry.URL) {
 			// In the case where there was a sku= on the URL we want to keep the one with it
 			urlString := partData.URL
-			newURL, strippedNew := spiderdata.CleanURL(partData.URL)
-			oldURL, strippedOld := spiderdata.CleanURL(entry.URL)
+			newURL, strippedNew := spiderdata.CleanURL(ctx, partData.URL)
+			oldURL, strippedOld := spiderdata.CleanURL(ctx, entry.URL)
 			if !strippedNew && strippedOld {
 				urlString = entry.URL
 			}
@@ -581,7 +581,7 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 			})
 		} else {
 			if addSKU {
-				url, _ = spiderdata.CleanURL(url)
+				url, _ = spiderdata.CleanURL(ctx, url)
 				url += "?sku=" + sku
 			}
 			spiderdata.OutputProduct(ctx, localname, sku, url, getDownloadURL(ctx, sku, downloadurls), isDiscontinued, nil)
@@ -852,7 +852,7 @@ func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url 
 // ParseServocityPage parses a page and adds links to elements found within by the various processors
 func ParseServocityPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := ctx.Cmd.URL().String()
+	url := ctx.Url
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul.breadcrumbs"))
 	spiderdata.MarkVisitedURL(ctx, url, breadcrumbs)

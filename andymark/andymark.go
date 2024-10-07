@@ -132,8 +132,8 @@ func CheckAndyMarkMatch(ctx *spiderdata.Context, partData *partcatalog.PartData)
 		if !strings.EqualFold(partData.URL, entry.URL) {
 			// In the case where there was a sku= on the URL we want to keep the one with it
 			urlString := partData.URL
-			newURL, strippedNew := spiderdata.CleanURL(partData.URL)
-			oldURL, strippedOld := spiderdata.CleanURL(entry.URL)
+			newURL, strippedNew := spiderdata.CleanURL(ctx, partData.URL)
+			oldURL, strippedOld := spiderdata.CleanURL(ctx, entry.URL)
 			if !strippedNew && strippedOld {
 				urlString = entry.URL
 			}
@@ -204,7 +204,7 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 // --------------------------------------------------------------------------------------------
 // getDownloadURL looks in the download map for a matching entry and returns the corresponding URL, marking it as used
 // from the list of downloads so that we know what is left over
-func getDownloadURL(ctx *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
+func getDownloadURL(_ /*ctx*/ *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
 	result = "<NOMODEL:" + sku + ">"
 	ent, found := downloadurls[sku]
 	if found {
@@ -225,7 +225,7 @@ func getDownloadURL(ctx *spiderdata.Context, sku string, downloadurls spiderdata
 	return
 }
 
-func processProductBrowse(ctx *spiderdata.Context, productname string, url string, product *goquery.Selection) (found bool) {
+func processProductBrowse(ctx *spiderdata.Context, productname string, _ /*url*/ string, product *goquery.Selection) (found bool) {
 	found = false
 	spiderdata.OutputCategory(ctx, productname, true)
 	product.Find("div.product-summary a.product-summary__media-link").Each(func(i int, linked *goquery.Selection) {
@@ -304,24 +304,26 @@ func processProductSelection(ctx *spiderdata.Context, productname string, url st
 
 // getBreadCrumbName returns the breadcrumb associated with a document
 // A typical one looks like this:
-//     <div class="breadcrumbs">
-//     <ul>
-//                     <li class="home">
-//                             <a href="https://www.servocity.com/" title="Go to Home Page">Home</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category30">
-//                             <a href="https://www.servocity.com/motion-components" title="">Motion Components</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category44">
-//                             <a href="https://www.servocity.com/motion-components/linear-motion" title="">Linear Motion</a>
-//                                         <span>&gt; </span>
-//                         </li>
-//                     <li class="category87">
-//                             <strong>Linear Bearings</strong>
-//                                     </li>
-//             </ul>
+//
+//	<div class="breadcrumbs">
+//	<ul>
+//	                <li class="home">
+//	                        <a href="https://www.servocity.com/" title="Go to Home Page">Home</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category30">
+//	                        <a href="https://www.servocity.com/motion-components" title="">Motion Components</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category44">
+//	                        <a href="https://www.servocity.com/motion-components/linear-motion" title="">Linear Motion</a>
+//	                                    <span>&gt; </span>
+//	                    </li>
+//	                <li class="category87">
+//	                        <strong>Linear Bearings</strong>
+//	                                </li>
+//	        </ul>
+//
 // </div>
 //
 // What we want to get is the name (the sections in the <a> or the <strong>) while building up a database of matches to
@@ -454,7 +456,7 @@ func CacheNavMenu(ctx *spiderdata.Context, navtitle string, l2menu *goquery.Sele
 // ParseAndyMarkPage parses a page and adds links to elements found within by the various processors
 func ParseAndyMarkPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
-	url := ctx.Cmd.URL().String() // Path
+	url := ctx.Url
 	found := false
 	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("div.breadcrumbs"))
 	spiderdata.MarkVisitedURL(ctx, url, breadcrumbs)
