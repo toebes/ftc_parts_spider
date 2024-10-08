@@ -35,6 +35,26 @@ var RevRoboticsTarget = spiderdata.SpiderTarget{
 	},
 }
 
+// These products have a selector for color (or other attribute)
+var EquivSKUs = map[string]map[string]string{
+	"15mm Extrusion Slot Cover - 2m": {
+		"Red":    "REV-41-1633",
+		"White":  "REV-41-1634",
+		"Blue":   "REV-41-1635",
+		"Yellow": "REV-41-1636",
+		"Green":  "REV-41-1637",
+		"Black":  "REV-41-1638",
+		"Orange": "REV-41-1639",
+	}}
+
+// These products have a selector for options, but are all the same SKU
+var SingleSKUs = map[string]struct{}{
+	"REV-11-1105": {},
+	"REV-31-1389": {},
+	"REV-31-1557": {},
+	"REV-45-1507": {},
+}
+
 // CheckRevRoboticsMatch compares a partData to what has been captured from the spreadsheet
 // Any differences are put into the notes
 func CheckRevRoboticsMatch(ctx *spiderdata.Context, partData *partcatalog.PartData) {
@@ -365,14 +385,15 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 					}
 					result[title] = spiderdata.DownloadEnt{URL: dlurl, Used: false}
 					fmt.Printf("Save Download '%s'='%s'\n", title, dlurl)
-				} else {
-					if title == "" {
-						spiderdata.OutputError(ctx, "No URL found associated with %s on %s\n", title, url)
-					} else if foundurl {
-						spiderdata.OutputError(ctx, "No Title found for url %s on %s\n", dlurl, url)
-					} else {
-						spiderdata.OutputError(ctx, "No URL or Title found with:%s on %s\n", elem.Text(), url)
-					}
+					// } else {
+					// We don't actually care to complain about these bad URLs as they aren't problematic
+					//     if title != "" {
+					//         spiderdata.OutputError(ctx, "No URL found associated with %s on %s\n", title, url)
+					//     } else if foundurl {
+					//         spiderdata.OutputError(ctx, "No Title found for url %s on %s\n", dlurl, url)
+					//     } else {
+					//         spiderdata.OutputError(ctx, "No URL or Title found with:%s on %s\n", elem.Text(), url)
+					//     }
 				}
 			})
 		} else if strings.Contains(h2elem.Text(), "Product Options") {
@@ -463,43 +484,43 @@ func getKeyDownloadURL(sku string, downloadurls spiderdata.DownloadEntMap, key s
 func getDownloadURL(_ /*ctx*/ *spiderdata.Context, sku string, downloadurls spiderdata.DownloadEntMap) (result string) {
 	result = "<NOMODEL:" + sku + ">"
 
-	// We will first look for a STEP: version and use it if found, otherwise we go for the DRAWING: version
-	// or just a plain one.  We don't touch the ONSHAPE:
+	// We will first look for a ONSHAPE: version and use it if found,
+	// Then we look for the STEP:
+	// otherwise we go for the DRAWING: version
 	// title = "ONSHAPE:" + title
 	// title = "STEP:" + title
 	// title = "DRAWING:" + title
 
-	// See if there was a STEP model in the list of downloads
-	stepurl, found := getKeyDownloadURL(sku, downloadurls, "STEP")
-	if found {
-		// Yes, we use it
+	onshapeurl, foundonshape := getKeyDownloadURL(sku, downloadurls, "ONSHAPE")
+	stepurl, foundstep := getKeyDownloadURL(sku, downloadurls, "STEP")
+	drawingurl, founddrawing := getKeyDownloadURL(sku, downloadurls, "DRAWING")
+	if foundonshape {
+		// Best choice, use the Onshape version
+		result = onshapeurl
+	} else if foundstep {
+		// Yes, we use the step model
 		result = stepurl
-		// if there is a drawing, we need to mark it as used
-		_, _ = getKeyDownloadURL(sku, downloadurls, "DRAWING")
+	} else if founddrawing {
+		// Perfect, we use the drawing
+		result = drawingurl
 	} else {
-		// No STEP model, how about just a drawing?
-		drawingurl, found := getKeyDownloadURL(sku, downloadurls, "DRAWING")
+		// No STEP or DRAWING, check for just a plain link
+		url, found := getKeyDownloadURL(sku, downloadurls, "")
 		if found {
-			// Perfect, we use the drawing
-			result = drawingurl
+			// We got the plain link.
+			result = url
 		} else {
-			// No STEP or DRAWING, check for just a plain link
-			url, found := getKeyDownloadURL(sku, downloadurls, "")
-			if found {
-				// We got the plain link.
-				result = url
-			} else {
-				// We didn't find the sku in the list, but it is possible that they misnamed it.
-				// For example https://www.servocity.com/8mm-4-barrel  has a SKU of 545314
-				// But the text for the URL is mistyped as '535314' but it links to 'https://www.servocity.com/media/attachment/file/5/4/545314.zip'
-				// So we want to try to use it
-				for key, element := range downloadurls {
-					if !element.Used && strings.Contains(element.URL, sku) {
-						result = element.URL
-						downloadurls[key] = spiderdata.DownloadEnt{URL: element.URL, Used: true}
-					}
+			// We didn't find the sku in the list, but it is possible that they misnamed it.
+			// For example https://www.servocity.com/8mm-4-barrel  has a SKU of 545314
+			// But the text for the URL is mistyped as '535314' but it links to 'https://www.servocity.com/media/attachment/file/5/4/545314.zip'
+			// So we want to try to use it
+			for key, element := range downloadurls {
+				if !element.Used && strings.Contains(element.URL, sku) {
+					result = element.URL
+					downloadurls[key] = spiderdata.DownloadEnt{URL: element.URL, Used: true}
 				}
 			}
+
 		}
 	}
 	return
@@ -580,7 +601,7 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 	sku = fixSku(sku)
 
 	// fmt.Printf("Process Product\n")
-	changeset := product.Find("[data-product-option-change]")
+	changesetInputs := product.Find("[data-product-option-change]").Find("input")
 	//  <div data-product-option-change="" style="">
 	//    <div class="form-field" data-product-attribute="set-radio">
 	//      <label class="form-label form-label--alternate form-label--inlineSmall">
@@ -596,26 +617,39 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 	//  </div>
 
 	downloadurls := findAllDownloads(ctx, url, product)
+	_, isSingle := SingleSKUs[sku]
 
-	if changeset.Length() > 0 {
+	if changesetInputs.Length() > 0 && !isSingle {
 		//fmt.Printf("Has Changeset\n")
-		changeset.Find("input").Each(func(i int, input *goquery.Selection) {
+		changesetInputs.Each(func(i int, input *goquery.Selection) {
 			id, hasid := input.Attr("id")
+			datalabel, hasdatalabel := input.Attr("data-option-label")
 			if hasid {
 				label := input.Parent().Find(fmt.Sprintf("label[for='%s']", id))
+
 				if label.Length() > 0 {
 					labelText := label.Text()
 					// Regular expression to capture both the SKU and the description
-					re := regexp.MustCompile(`\((REV-[\d-]+)(?:-PK\d+)?\)[\s ]+(.+?)[\s ]*-\s*\d+[\s ]*Pack`)
+					//					re := regexp.MustCompile(`\((REV-[\d-]+)(?:-PK\d+)?\)[\s ]+(.+?)[\s ]*-\s*\d+[\s ]*Pack`)
+					re := regexp.MustCompile(`\((REV-[\d-]+)\)[\s ]+(.+?)(?:\s*-\s*\d+\s*Pack)?$`)
 
 					matches := re.FindStringSubmatch(labelText)
+					if len(matches) < 2 && hasdatalabel {
+						codemap, foundcodemap := EquivSKUs[localname]
+						if foundcodemap {
+							code, foundcode := codemap[datalabel]
+							if foundcode {
+								matches = []string{"", code, localname + " - " + datalabel}
+							}
+						}
+					}
 					if len(matches) > 2 {
 						itemsku := matches[1]
 						itemname := matches[2]
 						// We have a pair like this:
 						//      <input class="form-radio" type="radio" id="attribute_radio_114" name="attribute[53]" value="114" required="" data-state="false">
 						//      <label data-product-attribute-value="114" class="form-label" for="attribute_radio_114">30cm</label>
-						outpad[6], _ = getKeyDownloadURL(itemsku, downloadurls, "ONSHAPE")
+						outpad[6], _ = getKeyDownloadURL(itemsku, downloadurls, "STEP")
 						spiderdata.OutputProduct(ctx, itemname, itemsku, url, getDownloadURL(ctx, itemsku, downloadurls), false, outpad)
 					}
 				}
@@ -624,7 +658,7 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 		found = true
 	} else if sku != "" {
 		// fmt.Printf("No Changeset\n")
-		outpad[6], _ = getKeyDownloadURL(sku, downloadurls, "ONSHAPE")
+		outpad[6], _ = getKeyDownloadURL(sku, downloadurls, "STEP")
 		spiderdata.OutputProduct(ctx, localname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, outpad)
 		found = true
 	}
