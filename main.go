@@ -64,6 +64,7 @@ var (
 	spreadsheetID = flag.String("spreadsheet", "", "spider this spreadsheet")
 	singleOnly    = flag.Bool("single", false, "Only process the seed and don't follow any additional links")
 	StripSKU      = flag.Bool("stripsku", false, "Strip the SKU and other parameters from URLs")
+	SkipCatalog   = flag.Bool("skipcatalog", false, "Skip loading the catalog")
 )
 
 // ExcludeFromMatch checks to see whether something should be spidered
@@ -125,9 +126,15 @@ func main() {
 	}
 	spiderdata.OutputHeader(&context)
 
-	context.G.ReferenceData, err = partcatalog.LoadPartCatalog(spreadsheetID, ExcludeFromMatch)
-	if err != nil {
-		fmt.Printf("%v\n", err)
+	///
+	if *SkipCatalog {
+		context.G.ReferenceData = partcatalog.NewPartCatalogData()
+		context.G.ReferenceData.Partdata = make([]*partcatalog.PartData, 0)
+	} else {
+		context.G.ReferenceData, err = partcatalog.LoadPartCatalog(spreadsheetID, ExcludeFromMatch)
+		if err != nil {
+			fmt.Printf("%v\n", err)
+		}
 	}
 
 	if context.G.ReferenceData != nil {
@@ -136,7 +143,7 @@ func main() {
 			spiderdata.OutputPartData(&context, partdata)
 		}
 	}
-
+	context.Qc = &spiderdata.QueueCounter{}
 	// Create the muxer
 	mux := fetchbot.NewMux()
 
@@ -149,6 +156,7 @@ func main() {
 	// requests.
 	mux.Response().Method("GET").ContentType("text/html").Handler(fetchbot.HandlerFunc(
 		func(ctx *fetchbot.Context, res *http.Response, err error) {
+			context.Qc.Decrement()
 			if err != nil {
 				fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
 				return
@@ -165,9 +173,19 @@ func main() {
 				}
 				url := res.Request.URL.String()
 
-				muxcontext := spiderdata.Context{Cmd: ctx.Cmd, Q: ctx.Q, G: context.G, Url: url}
+				muxcontext := spiderdata.Context{Cmd: ctx.Cmd, Q: ctx.Q, G: context.G, Url: url, Qc: context.Qc}
 				// Enqueue all links as HEAD requests
 				context.G.TargetConfig.ParsePageFunc(&muxcontext, doc)
+				// See how many are remaining
+				remain := context.Qc.GetPendingCount()
+				fmt.Printf("#### After Processing %v remain\n", context.Qc.GetPendingCount())
+				// Note that when we get down to processing the last one, we want to
+				// queue in all the entries which were in the loaded list
+				if remain == 1 && !context.G.SingleOnly {
+					for _, entry := range context.G.ReferenceData.PartNumber {
+						spiderdata.EnqueURL(&context, entry.URL, entry.Section)
+					}
+				}
 			}
 		}))
 
@@ -235,11 +253,6 @@ func main() {
 	if !context.G.SingleOnly {
 		for _, val := range context.G.TargetConfig.Presets {
 			spiderdata.EnqueURL(&context, val, "Initial")
-		}
-
-		// Pre-queue any of the URLs that we had already found
-		for _, entry := range context.G.ReferenceData.PartNumber {
-			spiderdata.EnqueURL(&context, entry.URL, entry.Section)
 		}
 	} else {
 		fmt.Print("*** -single option selected, no additional URLs will be spidered")

@@ -49,11 +49,39 @@ type Globals struct {
 	StripSKU      bool
 }
 
+// Define a struct to hold the queue and pending request counter
+type QueueCounter struct {
+	PendingCount int
+	Mutex        sync.Mutex
+}
+
+// Increment adds to the pending counter when a request is enqueued
+func (qm *QueueCounter) Increment() {
+	qm.Mutex.Lock()
+	defer qm.Mutex.Unlock()
+	qm.PendingCount++
+}
+
+// Decrement subtracts from the pending counter when a request is processed
+func (qm *QueueCounter) Decrement() {
+	qm.Mutex.Lock()
+	defer qm.Mutex.Unlock()
+	qm.PendingCount--
+}
+
+// GetPendingCount returns the current number of pending entries
+func (qm *QueueCounter) GetPendingCount() int {
+	qm.Mutex.Lock()
+	defer qm.Mutex.Unlock()
+	return qm.PendingCount
+}
+
 // Context provides the globals used everywhere
 type Context struct {
 	Cmd fetchbot.Command
 	Url string
 	Q   *fetchbot.Queue
+	Qc  *QueueCounter
 	G   *Globals
 }
 
@@ -136,7 +164,7 @@ func CleanURL(ctx *Context, url string) (result string, stripped bool) {
 func EnqueURL(ctx *Context, url string, breadcrumb string) {
 	if url != "" {
 		// Resolve address
-		fmt.Printf("+++Enqueue:%s\n", url)
+		fmt.Printf("+++Enqueue:%s for '%v'\n", url, breadcrumb)
 		if ctx.Cmd != nil {
 			u, err := ctx.Cmd.URL().Parse(url)
 			if err != nil {
@@ -147,13 +175,17 @@ func EnqueURL(ctx *Context, url string, breadcrumb string) {
 		}
 		// Trim off any sku= on the URL
 		urlString, _ := CleanURL(ctx, url)
-		_, found := ctx.G.BreadcrumbMap[urlString]
+		prevbreadcrumb, found := ctx.G.BreadcrumbMap[urlString]
 		if !found {
 			if _, err := ctx.Q.SendStringHead(urlString); err != nil {
 				fmt.Printf("error: enqueue head %s - %s\n", url, err)
 			} else {
+				ctx.Qc.Increment()
 				ctx.G.BreadcrumbMap[urlString] = breadcrumb
 			}
+		} else if len(breadcrumb) > len(prevbreadcrumb) {
+			fmt.Printf("-Found Better breadcrumb '%v' for %v which was '%v'", breadcrumb, urlString, prevbreadcrumb)
+			ctx.G.BreadcrumbMap[urlString] = breadcrumb
 		}
 	}
 }
@@ -187,7 +219,7 @@ func OutputHeader(ctx *Context) {
 
 // OutputCategory puts in a category line at the start of each new section
 func OutputCategory(ctx *Context, breadcrumbs string, trimlast bool) {
-	fmt.Printf("+++OptputCategory: '%v' trim:%v\n", breadcrumbs, trimlast)
+	fmt.Printf("+++OutputCategory: '%v' trim:%v\n", breadcrumbs, trimlast)
 	category := breadcrumbs
 	if trimlast {
 		offset := strings.LastIndex(category, " > ")

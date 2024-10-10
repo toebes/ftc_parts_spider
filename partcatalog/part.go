@@ -83,7 +83,7 @@ func NewPartCatalogData() *PartCatalogData {
 
 func (catalog *PartCatalogData) addPart(part *PartData, excludeFilter func(*PartData) bool) {
 	if catalog.Partdata == nil {
-		catalog.Partdata = make([]*PartData, 0, 0)
+		catalog.Partdata = make([]*PartData, 0)
 	}
 	catalog.Partdata = append(catalog.Partdata, part)
 
@@ -94,7 +94,7 @@ func (catalog *PartCatalogData) addPart(part *PartData, excludeFilter func(*Part
 
 	if exclude {
 		if catalog.ExcludeFromSearch == nil {
-			catalog.ExcludeFromSearch = make([]*PartData, 0, 0)
+			catalog.ExcludeFromSearch = make([]*PartData, 0)
 		}
 		catalog.ExcludeFromSearch = append(catalog.ExcludeFromSearch, part)
 	} else {

@@ -227,9 +227,10 @@ func CheckRevRoboticsMatch(ctx *spiderdata.Context, partData *partcatalog.PartDa
 //
 // What we want to get is the name (the sections in the <a> or the <strong>) while building up a database of matches to
 // the category since their website seems to put a unique category for each
+// However the biggest problem is that we don't actually trust their breadcrumbs so we have to rely on knowing what
+// pages referenced us and use that location
 func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selection) string {
 	result := ""
-	prevresult := ""
 	bc.Find("li").Each(func(i int, li *goquery.Selection) {
 		name := ""
 		url := ""
@@ -253,44 +254,44 @@ func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selectio
 		}
 		spiderdata.SaveCategory(ctx, name, catclass, url)
 
-		prevresult = result
 		result = spiderdata.MakeBreadCrumb(ctx, result, name)
 	})
-	// fmt.Printf("+++Extracted breadcrumb was '%v' lastname='%v' prevresult='%v'\n", result, lastname, prevresult)
-	// Now see if the breadcrumb was Home > Shop All (without the last name)
-	if strings.EqualFold(prevresult, "Home > Shop All") {
-		// It was, so we need to extract the proper name
-		savename, found := ctx.G.BreadcrumbMap[url]
-		// fmt.Printf("+++Checking savename='%v' found=%v for url='%v'\n", savename, found, url)
-		if found {
-			result = savename
-		}
+	savename, found := ctx.G.BreadcrumbMap[url]
+	if found && savename != "" {
+		fmt.Printf("== For %v extracted breadcrumb '%v' but instead using '%v'\n", url, result, savename)
+		result = savename
 	}
 	return result
 }
 
-func processNavList(ctx *spiderdata.Context, breadcrumbs string, categoryproducts *goquery.Selection) (found bool) {
+func processNavList(ctx *spiderdata.Context, breadcrumbs string, navlist *goquery.Selection) (found bool) {
 	found = false
 	// fmt.Printf("processNavList\n")
-	categoryproducts.Find("li.navList-item").Each(func(i int, item *goquery.Selection) {
-		// fmt.Printf("-Found Category product LI element\n")
-		item.Find("a.navList-action").Each(func(i int, elem *goquery.Selection) {
+	navlist.ChildrenFiltered("li.navList-item").Each(func(i int, item *goquery.Selection) {
+		// fmt.Printf("-Found Category product LI element under %v\n", breadcrumbs)
+		item.ChildrenFiltered("a.navList-action").Each(func(i int, elem *goquery.Selection) {
 			url, _ := elem.Attr("href")
 			// elemtext := "<NOT FOUND>"
 			elemtext, _ := elem.Attr("title")
 			elem.Find("span").Each(func(i int, span *goquery.Selection) {
 				elemtext = span.Text()
 			})
-			fmt.Printf("Found item name=%s url=%s\n", elemtext, url)
+
+			localcrumbs := spiderdata.MakeBreadCrumb(ctx, breadcrumbs, elemtext)
+			// fmt.Printf("Found Nav item name=%s url=%s\n", localcrumbs, url)
 			found = true
 			if !ctx.G.SingleOnly {
-				spiderdata.EnqueURL(ctx, url, breadcrumbs)
+				spiderdata.EnqueURL(ctx, url, localcrumbs)
 			}
+			item.ChildrenFiltered("ul.navList").Each(func(i int, subnav *goquery.Selection) {
+				processNavList(ctx, localcrumbs, subnav)
+			})
 		})
 	})
 	return
 }
 
+// processPagination looks for the additional (page2, 3, etc) links which are extensions of the same page
 func processPagination(ctx *spiderdata.Context, breadcrumbs string, categoryproducts *goquery.Selection) (found bool) {
 	found = false
 	// fmt.Printf("processPagination\n")
@@ -319,8 +320,9 @@ func processSubCategories(ctx *spiderdata.Context, breadcrumbs string, categoryp
 			elemtext := elem.Text()
 			fmt.Printf("Found subCategory item name=%s url=%s\n", elemtext, url)
 			found = true
+			subcrumb := spiderdata.MakeBreadCrumb(ctx, breadcrumbs, elemtext)
 			if !ctx.G.SingleOnly {
-				spiderdata.EnqueURL(ctx, url, breadcrumbs)
+				spiderdata.EnqueURL(ctx, url, subcrumb)
 			}
 		})
 	})
@@ -574,6 +576,7 @@ func processProductGrid(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ s
 // processProductGrid takes a standard page which has a single product on it and outputs the information
 func processQaatcList(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ string, pg *goquery.Selection) (found bool) {
 	found = false
+
 	// fmt.Printf("Parents found: %d\n", pg.ParentFiltered("div.tab-content").Length())
 	if pg.ParentFiltered("div.tab-content").Length() == 0 {
 		pg.Find("li.qaatc__item  a.qaatc__name").Each(func(i int, a *goquery.Selection) {
@@ -582,7 +585,7 @@ func processQaatcList(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ str
 			fmt.Printf("**processQaatcList Found item name=%s url=%s\n", product, urlloc)
 			found = true
 			if !ctx.G.SingleOnly {
-				spiderdata.EnqueURL(ctx, urlloc, spiderdata.MakeBreadCrumb(ctx, breadcrumbs, product))
+				spiderdata.EnqueURL(ctx, urlloc, breadcrumbs)
 			}
 		})
 	}
@@ -594,7 +597,7 @@ func processQaatcList(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ str
 func processProduct(ctx *spiderdata.Context, productname string, url string, product *goquery.Selection) (found bool) {
 	outpad := make([]string, 7)
 	found = false
-	spiderdata.OutputCategory(ctx, productname, true)
+	spiderdata.OutputCategory(ctx, productname, false)
 	localname := product.Find("div.productView-product h1.productView-title").Text()
 	sku := product.Find("div.productView-product .productView-info-value").Text()
 	// We need to strip off the -PK<n>
@@ -667,313 +670,6 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 	return
 }
 
-// --------------------------------------------------------------------------------------------
-// ProcessTable parses a table of parts and outputs all of the products in the table
-// The first step is
-func processTable(ctx *spiderdata.Context, productname string, url string, downloadurls spiderdata.DownloadEntMap, table *goquery.Selection) (result bool) {
-	type colact int
-	const (
-		actSKU colact = iota
-		actSkip
-		actKeepName
-		actKeepNameAfter
-		actKeepNameBefore
-		actKeepBore
-		actOutput
-		actKeepTo
-	)
-	var specialmap = map[string]colact{
-		"Part #":       actSKU,
-		"Part Number":  actSKU,
-		"SKU":          actSKU,
-		"Meta Title":   actSKU,
-		"Wishlist":     actSkip,
-		"Price":        actSkip,
-		"Purchase":     actSkip,
-		"Length":       actKeepName,
-		"Bore":         actKeepName,
-		"A":            actKeepBore,
-		"Tooth":        actKeepNameAfter,
-		"Spline Size":  actKeepName,
-		"Thread Size":  actKeepName,
-		"Screw Size":   actKeepName,
-		"Thread":       actKeepName,
-		"Servo Spline": actKeepName,
-		"Thickness":    actKeepName,
-		"Bore A":       actKeepTo,
-		"Bore B":       actKeepName,
-		"Hex Size":     actKeepName,
-		"# of teeth":   actKeepName,
-	}
-	type colent struct {
-		name   string
-		action colact
-	}
-	var colnames [64]colent
-	result = false
-
-	// First we need to figure out the columns in the table.  We need to know the SKU and all columns
-	// except the Wishlist, Price and Purchase columns.  The remainder of the columns are useful to us
-	// Note that sometimes the table has a Bore column and an A column.  When there is only an A column,
-	// it is actually the Bore and as it turns out is the same as the Bore column, so we want to skip the
-	// A column if the Bore was already found
-	//
-	// Unfortunately we also have some bad actors like:
-	//      https://www.servocity.com/locking-washers and
-	//      https://www.servocity.com/zinc-plated-oversized-washers
-	// which doesn't have a TH, so we instead have to find the first TD and pretend it was a TH
-	// fmt.Printf("Processing Table\n")
-	foundbore := false
-	thset := table.Find("thead tr th")
-	if thset.Length() < 1 {
-		thset = table.Find("tr:first-child td")
-		fmt.Printf("Secondary set length=%d\n", thset.Length())
-	}
-	thset.Each(func(i int, th *goquery.Selection) {
-		p := th.Find("p")
-		strong := th.Find("strong")
-		colname := ""
-		if p.Length() > 0 {
-			colname = p.Text()
-		} else if strong.Length() > 0 {
-			colname = strong.Text()
-		} else {
-			colname = th.Text()
-		}
-		action, found := specialmap[colname]
-		// fmt.Printf("Found column header '%s' action=%d\n", colname, action)
-		if !found {
-			action = actOutput
-
-		} else {
-			if action == actSKU {
-				result = true
-			}
-			if colname == "Bore" {
-				foundbore = true
-			} else if action == actKeepBore && foundbore {
-				action = actSkip
-			}
-		}
-		colnames[i] = colent{colname, action}
-	})
-	if result {
-		table.Find("tbody tr").Each(func(i int, tr *goquery.Selection) {
-			sku := ""
-			var outpad []string
-			outname := productname
-			tr.Find("td").Each(func(i int, td *goquery.Selection) {
-				column := ""
-				p := td.Find("p")
-				if p.Length() > 0 {
-					column = p.Text()
-				} else {
-					column = td.Text()
-				}
-				switch colnames[i].action {
-				case actSKU:
-					sku = column
-				case actSkip:
-				case actKeepName:
-					outname += " " + column
-				case actKeepNameBefore:
-					outname += " " + colnames[i].name + " " + column
-				case actKeepNameAfter:
-					outname += " " + column + " " + colnames[i].name
-				case actKeepBore:
-					outname += " " + column + " Bore"
-				case actKeepTo:
-					outname += " " + column + " To"
-				case actOutput:
-					outpad = append(outpad, colnames[i].name+":"+column)
-				default:
-				}
-			})
-			spiderdata.OutputProduct(ctx, outname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, outpad)
-		})
-	}
-	return
-}
-
-// func processJavascriptSelector(ctx *spiderdata.Context, breadcrumbs string, url string, product *goquery.Selection) (found bool) {
-// 	type SingleOption struct {
-// 		ID       string
-// 		Label    string
-// 		Price    string
-// 		OldPrice string
-// 		Products []string
-// 	}
-// 	type AttributesConfig struct {
-// 		ID      string
-// 		Code    string
-// 		Label   string
-// 		Options []SingleOption
-// 		// Options interface{} // []SingleOption
-// 	}
-// 	type ProductConfig struct {
-// 		// Attributes map[string]interface{} `json:"attributes"`
-// 		Attributes map[string]AttributesConfig `json:"attributes"`
-// 		Template   string                      `json:"template"`
-// 		BasePrice  string                      `json:"basePrice"`
-// 		OldPrice   string                      `json:"oldPrice"`
-// 		ProductID  string                      `json:"productId"`
-// 		ChooseText string                      `json:"chooseText"`
-// 		TaxConfig  string                      `json:"taxConfig"`
-// 	}
-// 	type ProductInfo struct {
-// 		Label string
-// 		SKU   string
-// 	}
-// 	found = false
-// 	downloadurls := findAllDownloads(ctx, url, product)
-// 	ProductMap := map[string]ProductInfo{}
-// 	productname := ""
-// 	pn := product.Find("div.product-name h1")
-// 	if pn.Length() > 0 {
-// 		productname = pn.Text()
-// 	}
-// 	product.Find("script").Each(func(i int, js *goquery.Selection) {
-// 		jstext := js.Text()
-// 		pos := strings.Index(jstext, "Product.Config(")
-// 		if pos > 0 {
-// 			pos2 := strings.Index(jstext, ");")
-// 			// fmt.Printf("Found Javascript pos=%d pos2=%d '%s'\n", pos, pos2, jstext)
-// 			if pos2 > 0 {
-
-// 				//                  "371":{"id":"371",
-// 				//                         "code":"length_configurable",
-// 				//                         "label":"Length",
-// 				//                         "options":[{"id":"244","label":"4mm","price":"0","oldPrice":"0","products":["6452"]},
-// 				//                                    {"id":"245","label":"5mm","price":"0","oldPrice":"0","products":["6453"]}
-// 				//                                   ]
-// 				var result ProductConfig
-// 				jsontext := jstext[pos+15 : pos2]
-// 				fmt.Printf("JSON ='%s'\n", jsontext)
-// 				json.Unmarshal([]byte(jsontext), &result)
-// 				fmt.Printf("Parse Result:%s\n", result)
-// 				fmt.Printf("Parse Result:%s\n", result.Attributes)
-// 				for key, value := range result.Attributes {
-// 					for key1, value1 := range value.Options {
-// 						fmt.Printf("Key:%s[%d] ID:%s Products:%s\n", key, key1, value1.ID, value1.Products)
-// 						for _, value2 := range value1.Products {
-// 							label := ""
-// 							oldmap, exists := ProductMap[value2]
-// 							oldlabel := ""
-// 							extra := ""
-// 							if exists {
-// 								oldlabel = oldmap.Label
-// 								extra = " "
-// 							}
-// 							if value1.Label == "Yes" {
-// 								label = value.Label
-// 							} else if value1.Label == "No" {
-// 								extra = ""
-// 							} else {
-// 								label = value.Label + " " + value1.Label
-// 							}
-// 							ProductMap[value2] = ProductInfo{oldlabel + extra + label, ""}
-// 						}
-// 					}
-// 				}
-// 			}
-// 		} else {
-// 			// We want to parse the ProductMap which should look something like
-// 			// var productMap = {"6452":"92029A140","6453":"92029A141"};
-// 			pos = strings.Index(jstext, "var productMap = ")
-// 			if pos >= 0 {
-// 				pos2 := strings.Index(jstext, "};")
-// 				if pos2 >= 0 {
-// 					// Extract just the value to assign
-// 					pmtext := jstext[pos+17 : pos2+1]
-// 					fmt.Printf("***pmtext:%s\n", pmtext)
-// 					var result map[string]string
-// 					// And pull it into a map
-// 					json.Unmarshal([]byte(pmtext), &result)
-// 					// Which we iterate through
-// 					for key, value := range result {
-// 						// And assign to the products
-// 						Label := ProductMap[key].Label
-// 						ProductMap[key] = ProductInfo{Label, value}
-// 					}
-
-// 				}
-// 			}
-// 			// fmt.Printf("Javascript: %s\n", jstext)
-// 		}
-// 	})
-// 	// Ok we got the data.  Dump it out for now
-// 	for _, value := range ProductMap {
-// 		spiderdata.OutputProduct(ctx, productname+" "+value.Label, value.SKU, url, getDownloadURL(ctx, value.SKU, downloadurls), false, nil)
-// 		found = true
-// 	}
-// 	return
-// }
-
-// --------------------------------------------------------------------------------------------
-// processLazyLoad finds all the lazy loaded sub pages
-func processLazyLoad(ctx *spiderdata.Context, breadcrumbs string, _ /*url*/ string, js *goquery.Selection) (found bool) {
-	jstext := js.Text()
-	pos := strings.Index(jstext, "window.stencilBootstrap(")
-	if pos > 0 {
-		// fmt.Printf("Found Bootstrap: %v", jstext)
-		pos := strings.Index(jstext, "subcategories")
-		if pos > 0 {
-			jstext = jstext[pos:]
-			pos = strings.Index(jstext, ":[")
-			if pos > 0 {
-				pos2 := strings.Index(jstext, "],")
-				// fmt.Printf("Found Javascript pos=%d pos2=%d '%s'\n", pos, pos2, jstext[pos:pos2])
-				if pos2 > 0 {
-					// //         <script>
-					// // Exported in app.js
-					// window.stencilBootstrap("category", "{\"categoryProductsPerPage\":50,
-					// 				   \"subcategoryURLs\":[\"https://www.gobilda.com/chain/\",
-					// 				   \"https://www.gobilda.com/set-screw-sprockets/\",
-					// 				   \"https://www.gobilda.com/14mm-bore-aluminum-hub-mount-sprockets/\",
-					// 				   \"https://www.gobilda.com/14mm-bore-plastic-hub-mount-sprockets/\",
-					// 				   \"https://www.gobilda.com/32mm-bore-aluminum-hub-mount-sprockets/\"],
-					// 				   \"template\":\"pages/custom/category/category-stacked-shortest-name\",
-					// 				   \"themeSettings\":{\"alert-backgroundColor\":\"#ffffff\",\"alert-color\":\"#333333\",\"alert-color-alt\":\"#ffffff\",\"applePay-button\":\"black\",\"blockquote-cite-font-color\":\"#999999\",\"blog_size\":\"190x250\",\"body-bg\":\"#ffffff\",\"body-font\":\"Google_Roboto_300\",\"brand_size\":\"190x250\",\"brandpage_products_per_page\":12,\"button--default-borderColor\":\"#cccccc\",\"button--default-borderColorActive\":\"#757575\",\"button--default-borderColorHover\":\"#999999\",\"button--default-color\":\"#666666\",\"button--default-colorActive\":\"#000000\",\"button--default-colorHover\":\"#333333\",\"button--disabled-backgroundColor\":\"#cccccc\",\"button--disabled-borderColor\":\"transparent\",\"button--disabled-color\":\"#ffffff\",\"button--icon-svg-color\":\"#757575\",\"button--primary-backgroundColor\":\"#444444\",\"button--primary-backgroundColorActive\":\"#000000\",\"button--primary-backgroundColorHover\":\"#666666\",\"button--primary-color\":\"#ffffff\",\"button--primary-colorActive\":\"#ffffff\",\"button--primary-colorHover\":\"#ffffff\",\"card--alternate-backgroundColor\":\"#ffffff\",\"card--alternate-borderColor\":\"#ffffff\",\"card--alternate-color--hover\":\"#ffffff\",\"card-figcaption-button-background\":\"#ffffff\",\"card-figcaption-button-color\":\"#333333\",\"card-title-color\":\"#333333\",\"card-title-color-hover\":\"#757575\",\"carousel-arrow-bgColor\":\"#ffffff\",\"carousel-arrow-borderColor\":\"#ffffff\",\"carousel-arrow-color\":\"#999999\",\"carousel-bgColor\":\"#ffffff\",\"carousel-description-color\":\"#333333\",\"carousel-dot-bgColor\":\"#ffffff\",\"carousel-dot-color\":\"#333333\",\"carousel-dot-color-active\":\"#757575\",\"carousel-title-color\":\"#444444\",\"categorypage_products_per_page\":50,\"checkRadio-backgroundColor\":\"#ffffff\",\"checkRadio-borderColor\":\"#cccccc\",\"checkRadio-color\":\"#333333\",\"color-black\":\"#ffffff\",\"color-error\":\"#cc4749\",\"color-errorLight\":\"#ffdddd\",\"color-grey\":\"#999999\",\"color-greyDark\":\"#666666\",\"color-greyDarker\":\"#333333\",\"color-greyDarkest\":\"#000000\",\"color-greyLight\":\"#999999\",\"color-greyLighter\":\"#cccccc\",\"color-greyLightest\":\"#e5e5e5\",\"color-greyMedium\":\"#757575\",\"color-info\":\"#666666\",\"color-infoLight\":\"#dfdfdf\",\"color-primary\":\"#757575\",\"color-primaryDark\":\"#666666\",\"color-primaryDarker\":\"#333333\",\"color-primaryLight\":\"#999999\",\"color-secondary\":\"#ffffff\",\"color-secondaryDark\":\"#e5e5e5\",\"color-secondaryDarker\":\"#cccccc\",\"color-success\":\"#008a06\",\"color-successLight\":\"#d5ffd8\",\"color-textBase\":\"#333333\",\"color-textBase--active\":\"#757575\",\"color-textBase--hover\":\"#757575\",\"color-textHeading\":\"#444444\",\"color-textLink\":\"#333333\",\"color-textLink--active\":\"#757575\",\"color-textLink--hover\":\"#757575\",\"color-textSecondary\":\"#757575\",\"color-textSecondary--active\":\"#333333\",\"color-textSecondary--hover\":\"#333333\",\"color-warning\":\"#f1a500\",\"color-warningLight\":\"#fffdea\",\"color-white\":\"#ffffff\",\"color-whitesBase\":\"#e5e5e5\",\"color_actobotics-green\":\"#43b02a\",\"color_badge_product_sale_badges\":\"#007dc6\",\"color_gobilda-grey\":\"#2c2c2c\",\"color_gobilda-yellow\":\"#fad000\",\"color_hover_product_sale_badges\":\"#000000\",\"color_robotzone-red\":\"#da291c\",\"color_servocity-blue\":\"#0077c8\",\"color_text_product_sale_badges\":\"#ffffff\",\"container-border-global-color-base\":\"#e5e5e5\",\"container-fill-base\":\"#ffffff\",\"container-fill-dark\":\"#e5e5e5\",\"default_image_brand\":\"/assets/img/BrandDefault.gif\",\"default_image_gift_certificate\":\"/assets/img/GiftCertificate.png\",\"default_image_product\":\"/assets/img/ProductDefault.gif\",\"dropdown--quickSearch-backgroundColor\":\"#e5e5e5\",\"fontSize-h1\":28,\"fontSize-h2\":25,\"fontSize-h3\":22,\"fontSize-h4\":20,\"fontSize-h5\":15,\"fontSize-h6\":13,\"fontSize-root\":14,\"footer-backgroundColor\":\"#ffffff\",\"form-label-font-color\":\"#666666\",\"gallery_size\":\"300x300\",\"geotrust_ssl_common_name\":\"\",\"geotrust_ssl_seal_size\":\"M\",\"header-backgroundColor\":\"#ffffff\",\"headings-font\":\"Google_Montserrat_400\",\"hide_content_navigation\":false,\"homepage_blog_posts_count\":3,\"homepage_featured_products_column_count\":6,\"homepage_featured_products_count\":8,\"homepage_new_products_column_count\":6,\"homepage_new_products_count\":12,\"homepage_show_carousel\":true,\"homepage_stretch_carousel_images\":false,\"homepage_top_products_column_count\":6,\"homepage_top_products_count\":8,\"icon-color\":\"#757575\",\"icon-color-hover\":\"#999999\",\"icon-ratingEmpty\":\"#cccccc\",\"icon-ratingFull\":\"#757575\",\"input-bg-color\":\"#ffffff\",\"input-border-color\":\"#cccccc\",\"input-border-color-active\":\"#999999\",\"input-disabled-bg\":\"#ffffff\",\"input-font-color\":\"#666666\",\"label-backgroundColor\":\"#cccccc\",\"label-color\":\"#ffffff\",\"loadingOverlay-backgroundColor\":\"#ffffff\",\"logo-font\":\"Google_Oswald_300\",\"logo-position\":\"center\",\"logo_fontSize\":28,\"logo_size\":\"250x100\",\"medium_size\":\"800x800\",\"navPages-color\":\"#333333\",\"navPages-color-hover\":\"#757575\",\"navPages-subMenu-backgroundColor\":\"#e5e5e5\",\"navPages-subMenu-separatorColor\":\"#cccccc\",\"navUser-color\":\"#333333\",\"navUser-color-hover\":\"#757575\",\"navUser-dropdown-backgroundColor\":\"#ffffff\",\"navUser-dropdown-borderColor\":\"#cccccc\",\"navUser-indicator-backgroundColor\":\"#333333\",\"navigation_design\":\"simple\",\"optimizedCheckout-backgroundImage\":\"\",\"optimizedCheckout-backgroundImage-size\":\"1000x400\",\"optimizedCheckout-body-backgroundColor\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-backgroundColor\":\"#333333\",\"optimizedCheckout-buttonPrimary-backgroundColorActive\":\"#000000\",\"optimizedCheckout-buttonPrimary-backgroundColorDisabled\":\"#cccccc\",\"optimizedCheckout-buttonPrimary-backgroundColorHover\":\"#666666\",\"optimizedCheckout-buttonPrimary-borderColor\":\"#cccccc\",\"optimizedCheckout-buttonPrimary-borderColorActive\":\"transparent\",\"optimizedCheckout-buttonPrimary-borderColorDisabled\":\"transparent\",\"optimizedCheckout-buttonPrimary-borderColorHover\":\"transparent\",\"optimizedCheckout-buttonPrimary-color\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-colorActive\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-colorDisabled\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-colorHover\":\"#ffffff\",\"optimizedCheckout-buttonPrimary-font\":\"Google_Roboto_300\",\"optimizedCheckout-buttonSecondary-backgroundColor\":\"#ffffff\",\"optimizedCheckout-buttonSecondary-backgroundColorActive\":\"#e5e5e5\",\"optimizedCheckout-buttonSecondary-backgroundColorHover\":\"#f5f5f5\",\"optimizedCheckout-buttonSecondary-borderColor\":\"#cccccc\",\"optimizedCheckout-buttonSecondary-borderColorActive\":\"#757575\",\"optimizedCheckout-buttonSecondary-borderColorHover\":\"#999999\",\"optimizedCheckout-buttonSecondary-color\":\"#333333\",\"optimizedCheckout-buttonSecondary-colorActive\":\"#000000\",\"optimizedCheckout-buttonSecondary-colorHover\":\"#333333\",\"optimizedCheckout-buttonSecondary-font\":\"Google_Karla_400\",\"optimizedCheckout-colorFocus\":\"#4496f6\",\"optimizedCheckout-contentPrimary-color\":\"#333333\",\"optimizedCheckout-contentPrimary-font\":\"Google_Roboto_300\",\"optimizedCheckout-contentSecondary-color\":\"#757575\",\"optimizedCheckout-contentSecondary-font\":\"Google_Roboto_300\",\"optimizedCheckout-discountBanner-backgroundColor\":\"#e5e5e5\",\"optimizedCheckout-discountBanner-iconColor\":\"#333333\",\"optimizedCheckout-discountBanner-textColor\":\"#333333\",\"optimizedCheckout-form-textColor\":\"#666666\",\"optimizedCheckout-formChecklist-backgroundColor\":\"#ffffff\",\"optimizedCheckout-formChecklist-backgroundColorSelected\":\"#f5f5f5\",\"optimizedCheckout-formChecklist-borderColor\":\"#cccccc\",\"optimizedCheckout-formChecklist-color\":\"#333333\",\"optimizedCheckout-formField-backgroundColor\":\"#ffffff\",\"optimizedCheckout-formField-borderColor\":\"#cccccc\",\"optimizedCheckout-formField-errorColor\":\"#d14343\",\"optimizedCheckout-formField-inputControlColor\":\"#476bef\",\"optimizedCheckout-formField-placeholderColor\":\"#999999\",\"optimizedCheckout-formField-shadowColor\":\"#e5e5e5\",\"optimizedCheckout-formField-textColor\":\"#333333\",\"optimizedCheckout-header-backgroundColor\":\"#f5f5f5\",\"optimizedCheckout-header-borderColor\":\"#dddddd\",\"optimizedCheckout-header-textColor\":\"#333333\",\"optimizedCheckout-headingPrimary-color\":\"#333333\",\"optimizedCheckout-headingPrimary-font\":\"Google_Montserrat_400\",\"optimizedCheckout-headingSecondary-color\":\"#333333\",\"optimizedCheckout-headingSecondary-font\":\"Google_Montserrat_400\",\"optimizedCheckout-link-color\":\"#476bef\",\"optimizedCheckout-link-font\":\"Google_Karla_400\",\"optimizedCheckout-link-hoverColor\":\"#002fe1\",\"optimizedCheckout-loadingToaster-backgroundColor\":\"#333333\",\"optimizedCheckout-loadingToaster-textColor\":\"#ffffff\",\"optimizedCheckout-logo\":\"\",\"optimizedCheckout-logo-position\":\"left\",\"optimizedCheckout-logo-size\":\"250x100\",\"optimizedCheckout-orderSummary-backgroundColor\":\"#ffffff\",\"optimizedCheckout-orderSummary-borderColor\":\"#dddddd\",\"optimizedCheckout-show-backgroundImage\":false,\"optimizedCheckout-show-logo\":\"none\",\"optimizedCheckout-step-backgroundColor\":\"#757575\",\"optimizedCheckout-step-borderColor\":\"#dddddd\",\"optimizedCheckout-step-textColor\":\"#ffffff\",\"overlay-backgroundColor\":\"#333333\",\"pace-progress-backgroundColor\":\"#999999\",\"price_ranges\":true,\"product_list_display_mode\":\"grid\",\"product_sale_badges\":\"none\",\"product_size\":\"500x659\",\"productgallery_size\":\"318x318\",\"productgallery_size_three_column\":\"712x712\",\"productpage_related_products_count\":100,\"productpage_reviews_count\":9,\"productpage_similar_by_views_count\":10,\"productpage_videos_count\":8,\"productthumb_size\":\"100x100\",\"productview_thumb_size\":\"50x50\",\"restrict_to_login\":false,\"searchpage_products_per_page\":12,\"select-arrow-color\":\"#757575\",\"select-bg-color\":\"#ffffff\",\"shop_by_brand_show_footer\":true,\"shop_by_price_visible\":true,\"show_accept_amex\":false,\"show_accept_discover\":false,\"show_accept_mastercard\":false,\"show_accept_paypal\":false,\"show_accept_visa\":false,\"show_copyright_footer\":true,\"show_powered_by\":true,\"show_product_details_tabs\":true,\"show_product_dimensions\":false,\"show_product_quick_view\":true,\"show_product_weight\":true,\"social_icon_placement_bottom\":\"bottom_none\",\"social_icon_placement_top\":false,\"spinner-borderColor-dark\":\"#999999\",\"spinner-borderColor-light\":\"#ffffff\",\"storeName-color\":\"#333333\",\"swatch_option_size\":\"22x22\",\"thumb_size\":\"100x100\",\"zoom_size\":\"1280x1280\"},\"genericError\":\"Oops! Something went wrong.\",\"maintenanceMode\":{\"header\":null,\"message\":null,\"notice\":null,\"password\":null,\"securePath\":\"https://www.gobilda.com\"},\"urls\":{\"account\":{\"add_address\":\"/account.php?action=add_shipping_address\",\"addresses\":\"/account.php?action=address_book\",\"details\":\"/account.php?action=account_details\",\"inbox\":\"/account.php?action=inbox\",\"index\":\"/account.php\",\"orders\":{\"all\":\"/account.php?action=order_status\",\"completed\":\"/account.php?action=view_orders\",\"save_new_return\":\"/account.php?action=save_new_return\"},\"recent_items\":\"/account.php?action=recent_items\",\"returns\":\"/account.php?action=view_returns\",\"send_message\":\"/account.php?action=send_message\",\"update_action\":\"/account.php?action=update_account\",\"wishlists\":{\"add\":\"/wishlist.php?action=addwishlist\",\"all\":\"/wishlist.php\",\"delete\":\"/wishlist.php?action=deletewishlist\",\"edit\":\"/wishlist.php?action=editwishlist\"}},\"auth\":{\"check_login\":\"/login.php?action=check_login\",\"create_account\":\"/login.php?action=create_account\",\"forgot_password\":\"/login.php?action=reset_password\",\"login\":\"/login.php\",\"logout\":\"/login.php?action=logout\",\"save_new_account\":\"/login.php?action=save_new_account\",\"save_new_password\":\"/login.php?action=save_new_password\",\"send_password_email\":\"/login.php?action=send_password_email\"},\"brands\":\"https://www.gobilda.com/brands/\",\"cart\":\"/cart.php\",\"checkout\":{\"multiple_address\":\"/checkout.php?action=multiple\",\"single_address\":\"/checkout\"},\"compare\":\"/compare\",\"contact_us_submit\":\"/pages.php?action=sendContactForm\",\"gift_certificate\":{\"balance\":\"/giftcertificates.php?action=balance\",\"purchase\":\"/giftcertificates.php\",\"redeem\":\"/giftcertificates.php?action=redeem\"},\"home\":\"https://www.gobilda.com/\",\"product\":{\"post_review\":\"/postreview.php\"},\"rss\":{\"blog\":\"/rss.php?action=newblogs&type=rss\",\"blog_atom\":\"/rss.php?action=newblogs&type=atom\",\"products\":[]},\"search\":\"/search.php\",\"sitemap\":\"/sitemap.php\",\"subscribe\":{\"action\":\"/subscribe.php\"}}}").load();
-					// </script>
-					jstext = strings.ReplaceAll(jstext[pos+2:pos2], "\\\"", "\"")
-					urlset := strings.Split(jstext, ",")
-					for _, url := range urlset {
-						pos3 := strings.Index(url, "\"url\":\"")
-						if pos3 >= 0 {
-							urlpart := url[pos3+7:]
-							pos4 := strings.Index(urlpart, "\"")
-							if pos4 > 0 {
-								urlpart = urlpart[:pos4]
-							}
-							urlpart = strings.Trim(urlpart, "\"")
-							found = true
-							if !ctx.G.SingleOnly {
-								spiderdata.EnqueURL(ctx, urlpart, breadcrumbs)
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-	return
-}
-
-func processSimpleProductTable(ctx *spiderdata.Context, breadcrumbs string, url string, productname string, root *goquery.Selection, table *goquery.Selection) (found bool) {
-	found = false
-	downloadurls := findAllDownloads(ctx, url, root)
-	spiderdata.OutputCategory(ctx, breadcrumbs, false)
-	table.Each(func(i int, subtable *goquery.Selection) {
-		if processTable(ctx, productname, url, downloadurls, subtable) {
-			found = true
-		}
-	})
-	if found {
-		showUnusedURLS(ctx, url, downloadurls)
-	}
-	return
-}
-
 // ParseRevRoboticsPage parses a page and adds links to elements found within by the various processors
 func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
@@ -984,8 +680,10 @@ func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
 	doc.Find("ul.navList").Each(func(i int, navItems *goquery.Selection) {
 		// fmt.Printf("Found Navlist\n")
-		if processNavList(ctx, breadcrumbs, navItems) {
-			found = true
+		if navItems.ParentsFiltered("ul.navList").Length() == 0 {
+			if processNavList(ctx, "", navItems) {
+				found = true
+			}
 		}
 	})
 	// Find all the pagination links from this page
@@ -1000,7 +698,6 @@ func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	doc.Find("div.productCategoryCompare").Each(func(i int, products *goquery.Selection) {
 		_ = processSubProducts(ctx, breadcrumbs, products)
 	})
-	// qaatc__list
 	if !found {
 		doc.Find("ul.productGrid").Each(func(i int, product *goquery.Selection) {
 			if processProductGrid(ctx, breadcrumbs, url, product) {
@@ -1010,35 +707,17 @@ func ParseRevRoboticsPage(ctx *spiderdata.Context, doc *goquery.Document) {
 			}
 		})
 	}
+	doc.Find("ul.qaatc__list").Each(func(i int, product *goquery.Selection) {
+		if processQaatcList(ctx, breadcrumbs, url, product) {
+			found = true
+		}
+	})
 	if !found {
 		doc.Find("div.productView").Each(func(i int, product *goquery.Selection) {
 			if processProduct(ctx, breadcrumbs, url, product) {
 				found = true
 			}
 		})
-	}
-	doc.Find("script").Each(func(i int, product *goquery.Selection) {
-		if processLazyLoad(ctx, breadcrumbs, url, product) {
-			found = true
-		}
-	})
-	if !found {
-		doc.Find("ul.qaatc__list").Each(func(i int, product *goquery.Selection) {
-			if processQaatcList(ctx, breadcrumbs, url, product) {
-				found = true
-			}
-		})
-	}
-
-	// Title is div.page-title h1
-	// Table is div.category-description div.table-widget-container table
-	if !found {
-		title := doc.Find("div.page-title h1")
-		table := doc.Find("div.category-description div.table-widget-container table")
-		if title.Length() > 0 && table.Length() > 0 &&
-			processSimpleProductTable(ctx, breadcrumbs, url, title.Text(), doc.Children(), table) {
-			found = true
-		}
 	}
 	if !found {
 		spiderdata.OutputError(ctx, "Unable to process: %s\n", url)

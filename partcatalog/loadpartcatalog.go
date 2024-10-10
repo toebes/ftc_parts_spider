@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strconv"
@@ -42,13 +41,13 @@ func getTokenFromWeb(config *oauth2.Config) (*oauth2.Token, error) {
 
 	if _, err := fmt.Scan(&authCode); err != nil {
 		fmt.Println("visit https://developers.google.com/sheets/api/quickstart/go")
-		return nil, fmt.Errorf("Unable to read authorization code. Caused by: %v", err)
+		return nil, fmt.Errorf("unable to read authorization code. Caused by: %v", err)
 	}
 	// authCode = ""
 
 	tok, err := config.Exchange(context.TODO(), authCode)
 	if err != nil {
-		return nil, fmt.Errorf("Unable to retrieve token from web. Caused by %v", err)
+		return nil, fmt.Errorf("unable to retrieve token from web. Caused by %v", err)
 	}
 	return tok, nil
 }
@@ -70,7 +69,7 @@ func saveToken(path string, token *oauth2.Token) error {
 	fmt.Printf("Saving credential file to: %s\n", path)
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
-		return fmt.Errorf("Unable to cache oauth token. Caused by %v", err)
+		return fmt.Errorf("unable to cache oauth token. Caused by %v", err)
 	}
 	defer f.Close()
 	json.NewEncoder(f).Encode(token)
@@ -90,15 +89,15 @@ func LoadPartCatalog(spreadsheetIDPtr *string, excludeFilter func(*PartData) boo
 	}
 	spreadsheetID := *spreadsheetIDPtr
 
-	b, err := ioutil.ReadFile("credentials.json")
+	b, err := os.ReadFile("credentials.json")
 	if err != nil {
-		return nil, fmt.Errorf("Unable to read client secret file. Caused by: %v", err)
+		return nil, fmt.Errorf("unable to read client secret file. Caused by: %v", err)
 	}
 
 	// If modifying these scopes, delete your previously saved token.json.
 	config, err := google.ConfigFromJSON(b, "https://www.googleapis.com/auth/spreadsheets.readonly")
 	if err != nil {
-		return nil, fmt.Errorf("Unable to parse client secret file to config. Caused by: %v", err)
+		return nil, fmt.Errorf("unable to parse client secret file to config. Caused by: %v", err)
 	}
 	client := getClient(config)
 
@@ -110,7 +109,7 @@ func LoadPartCatalog(spreadsheetIDPtr *string, excludeFilter func(*PartData) boo
 	readRange := "All"
 	response, err := srv.Spreadsheets.Values.Get(spreadsheetID, readRange).Do()
 	if err != nil {
-		return nil, fmt.Errorf("Unable to find 'ALL' sheet in spreadsheet %s. Caused by: %v", spreadsheetID, err)
+		return nil, fmt.Errorf("unable to find 'ALL' sheet in spreadsheet %s. Caused by: %v", spreadsheetID, err)
 	}
 
 	if len(response.Values) == 0 {
