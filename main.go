@@ -178,7 +178,7 @@ func main() {
 				context.G.TargetConfig.ParsePageFunc(&muxcontext, doc)
 				// See how many are remaining
 				remain := context.Qc.GetPendingCount()
-				fmt.Printf("#### After Processing %v remain\n", context.Qc.GetPendingCount())
+				fmt.Printf("#### After Processing %v remain\n", remain)
 				// Note that when we get down to processing the last one, we want to
 				// queue in all the entries which were in the loaded list
 				if remain == 1 && !context.G.SingleOnly {
