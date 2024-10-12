@@ -634,7 +634,7 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 					labelText := label.Text()
 					// Regular expression to capture both the SKU and the description
 					//					re := regexp.MustCompile(`\((REV-[\d-]+)(?:-PK\d+)?\)[\s ]+(.+?)[\s ]*-\s*\d+[\s ]*Pack`)
-					re := regexp.MustCompile(`\((REV-[\d-]+)\)[\s ]+(.+?)(?:\s*-\s*\d+\s*Pack)?$`)
+					re := regexp.MustCompile(`\((REV-[\d-]+(?:-PK\d+)?)\)[\s ]+(.+?)(?:\s*-\s*\d+\s*Pack)?$`)
 
 					matches := re.FindStringSubmatch(labelText)
 					if len(matches) < 2 && hasdatalabel {
@@ -647,7 +647,7 @@ func processProduct(ctx *spiderdata.Context, productname string, url string, pro
 						}
 					}
 					if len(matches) > 2 {
-						itemsku := matches[1]
+						itemsku := fixSku(matches[1])
 						itemname := matches[2]
 						// We have a pair like this:
 						//      <input class="form-radio" type="radio" id="attribute_radio_114" name="attribute[53]" value="114" required="" data-state="false">
