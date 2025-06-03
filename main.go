@@ -59,7 +59,7 @@ var (
 
 	// Command-line flags
 	target        = flag.String("target", "rev", "Target vendor to spider")
-	seed          = flag.String("seed", "https://www.revrobotics.com/ftc", "seed URL")
+	seed          = flag.String("seed", "", "seed URL")
 	cancelAfter   = flag.Duration("cancelafter", 0, "automatically cancel the fetchbot after a given time")
 	cancelAtURL   = flag.String("cancelat", "", "automatically cancel the fetchbot at a given URL")
 	stopAfter     = flag.Duration("stopafter", 0, "automatically stop the fetchbot after a given time")
@@ -80,7 +80,7 @@ func (uat *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, err
 	req.Header.Set("Host", "ftconshape.com")
 	req.Header.Set("Accept", "*/*")
 	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Accept-Encoding", "")
 	req.Header.Set("Connection", "keep-alive")
 	return http.DefaultTransport.RoundTrip(req)
 }
