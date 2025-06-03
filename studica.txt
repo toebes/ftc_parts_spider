@@ -1,0 +1,5 @@
+Order`Section`Name`Part #`Combined Name`URL`Model URL`Extra 1`Extra 2`Extra 3`Extra 4`Extra 5`Extra 6`Extra 7`Onshape URL`Model Status`Spider Status`Notes
+5`Structure > Channels`Low Profile U-Channel`(Configurable)`Low Profile U-Channel (Configurable)`https://www.studica.com/low-profile-u-channel`````````https://cad.onshape.com//documents/028efb55d42188277163389a/w/bce242de2a89089d3d53b92e`Done`Same`
+6`Structure > Channels`U channel`(Configurable)`U channel (Configurable)`https://www.studica.com/u-channel`````````https://cad.onshape.com//documents/f58b976b584754e4f85e5798/w/8d29ab4218f7d80a68537f41`Done`Same`
+284`Structure > L Beams`L-Beam`(Configurable)`L-Beam (Configurable)`https://www.studica.com/l-beams`````````https://cad.onshape.com//documents/cd8a1a72f3b2c5d9efbc8b92/w/b6833735e32de232aa707c76`Done`Same`
+348`Structure > Square Beams`144mm Square Beam`(Configurable)`144mm Square Beam (Configurable)`https://www.studica.com/studica-robotics-brand/144mm-square-beam-3`````````https://cad.onshape.com//documents/a6cbf96d8941d3d838de36e7/w/7ca6d91c9402776e23062875`Done`Same`

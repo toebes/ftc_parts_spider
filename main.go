@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"runtime"
@@ -13,12 +14,15 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/publicsuffix"
+
 	"github.com/toebes/ftc_parts_spider/andymark"
 	"github.com/toebes/ftc_parts_spider/gobilda"
 	"github.com/toebes/ftc_parts_spider/partcatalog"
 	"github.com/toebes/ftc_parts_spider/revrobotics"
 	"github.com/toebes/ftc_parts_spider/servocity"
 	"github.com/toebes/ftc_parts_spider/spiderdata"
+	"github.com/toebes/ftc_parts_spider/studica"
 
 	"github.com/PuerkitoBio/fetchbot"
 	"github.com/PuerkitoBio/goquery"
@@ -41,6 +45,7 @@ var (
 		"servocity": &servocity.ServocityTarget,
 		"gobilda":   &gobilda.GobildaTarget,
 		"andymark":  &andymark.AndyMarkTarget,
+		"studica":   &studica.StudicaTarget,
 		"pitsco": {
 			Outfile:        "pitsco.txt",
 			SpreadsheetID:  "1adykd3BVYUyXsb3vC2A-lNhFNj_Q8Yzd1oXThmSwPio",
@@ -66,6 +71,19 @@ var (
 	StripSKU      = flag.Bool("stripsku", false, "Strip the SKU and other parameters from URLs")
 	SkipCatalog   = flag.Bool("skipcatalog", false, "Skip loading the catalog")
 )
+
+type userAgentTransport struct {
+}
+
+func (uat *userAgentTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", "FTCPartsSpider/1.0.0")
+	req.Header.Set("Host", "ftconshape.com")
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("Cache-Control", "no-cache")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+	req.Header.Set("Connection", "keep-alive")
+	return http.DefaultTransport.RoundTrip(req)
+}
 
 // ExcludeFromMatch checks to see whether something should be spidered
 func ExcludeFromMatch(partdata *partcatalog.PartData) bool {
@@ -144,6 +162,13 @@ func main() {
 		}
 	}
 	context.Qc = &spiderdata.QueueCounter{}
+
+	// Initialize a custom HTTP client with a User-Agent
+	jar, _ := cookiejar.New(&cookiejar.Options{PublicSuffixList: publicsuffix.List})
+	client := &http.Client{
+		Transport: &userAgentTransport{},
+		Jar:       jar}
+
 	// Create the muxer
 	mux := fetchbot.NewMux()
 
@@ -156,6 +181,11 @@ func main() {
 	// requests.
 	mux.Response().Method("GET").ContentType("text/html").Handler(fetchbot.HandlerFunc(
 		func(ctx *fetchbot.Context, res *http.Response, err error) {
+			// Display cookies received for the current URL
+			cookies := client.Jar.Cookies(res.Request.URL)
+			for _, cookie := range cookies {
+				log.Printf("Cookie: %s = %s\n", cookie.Name, cookie.Value)
+			}
 			context.Qc.Decrement()
 			if err != nil {
 				fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
@@ -208,6 +238,7 @@ func main() {
 		h = stopHandler(stopURL, *cancelAtURL != "", logHandler(mux))
 	}
 	f := fetchbot.New(h)
+	f.HttpClient = client
 
 	// First mem stat print must be right after creating the fetchbot
 	if *memStats > 0 {
