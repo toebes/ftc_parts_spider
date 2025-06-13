@@ -105,7 +105,7 @@ func main() {
 
 	context := spiderdata.Context{}
 	context.G = &spiderdata.Globals{}
-	context.G.BreadcrumbMap = make(map[string]string) //map[string]string{}
+	context.G.BreadcrumbMap = make(map[string]string)
 	context.G.CatMap = make(spiderdata.CategoryMap)
 	context.G.DownloadMap = make(spiderdata.DownloadEntMap)
 	context.G.SingleOnly = *singleOnly
@@ -137,6 +137,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Mark all the pages that we want to automatically skip
+	for _, url := range context.G.TargetConfig.SkipPages {
+		spiderdata.MarkVisitedURL(&context, url, "")
+	}
+
 	// Start our log file to import into Excel
 	context.G.Outfile, err = os.Create(*fileout)
 	if err != nil {
@@ -179,7 +185,7 @@ func main() {
 
 	// Handle GET requests for html responses, to parse the body and enqueue all links as HEAD
 	// requests.
-	mux.Response().Method("GET").ContentType("text/html").Handler(fetchbot.HandlerFunc(
+	getHandler := fetchbot.HandlerFunc(
 		func(ctx *fetchbot.Context, res *http.Response, err error) {
 			// Display cookies received for the current URL
 			cookies := client.Jar.Cookies(res.Request.URL)
@@ -217,16 +223,21 @@ func main() {
 					}
 				}
 			}
-		}))
+		})
+	mux.Response().Method("GET").ContentType("text/html").Handler(getHandler)
+	mux.Response().Method("GET").ContentType("application/xml").Handler(getHandler)
 
 	// Handle HEAD requests for html responses coming from the source host - we don't want
 	// to crawl links from other hosts.
-	mux.Response().Method("HEAD").Host(u.Host).ContentType("text/html").Handler(fetchbot.HandlerFunc(
+	headhandler := fetchbot.HandlerFunc(
 		func(ctx *fetchbot.Context, res *http.Response, err error) {
 			if _, err := ctx.Q.SendStringGet(ctx.Cmd.URL().String()); err != nil {
 				fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)
 			}
-		}))
+		})
+
+	mux.Response().Method("HEAD").Host(u.Host).ContentType("application/xml").Handler(headhandler)
+	mux.Response().Method("HEAD").Host(u.Host).ContentType("text/html").Handler(headhandler)
 
 	// Create the Fetcher, handle the logging first, then dispatch to the Muxer
 	h := logHandler(mux)

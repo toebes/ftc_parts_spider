@@ -15,7 +15,7 @@ require (
 	github.com/stretchr/testify v1.7.0 // indirect
 	github.com/temoto/robotstxt v1.1.1 // indirect
 	go.opencensus.io v0.22.1 // indirect
-	golang.org/x/net v0.0.0-20201224014010-6772e930b67b // indirect
+	golang.org/x/net v0.0.0-20201224014010-6772e930b67b
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 	golang.org/x/sys v0.0.0-20210113131315-ba0562f347e0 // indirect
 	golang.org/x/text v0.3.5 // indirect

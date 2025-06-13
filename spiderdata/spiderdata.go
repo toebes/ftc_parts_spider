@@ -108,6 +108,8 @@ type SpiderTarget struct {
 	// says that if the spider found it in FTC Kits, but the spreadsheet says Linear Motion Kits then we will
 	// keep it in the Linear Motion Kits
 	SectionEquivalents [][]string
+	// These are pages to be skipped when processing.
+	SkipPages []string
 }
 
 // SaveCategory Saves a found Category URL
@@ -177,7 +179,8 @@ func EnqueURL(ctx *Context, url string, breadcrumb string) {
 		urlString, _ := CleanURL(ctx, url)
 		prevbreadcrumb, found := ctx.G.BreadcrumbMap[urlString]
 		if !found {
-			if _, err := ctx.Q.SendStringHead(urlString); err != nil {
+			if _, err := ctx.Q.SendStringGet(urlString); err != nil {
+				// if _, err := ctx.Q.SendStringHead(urlString); err != nil {
 				fmt.Printf("error: enqueue head %s - %s\n", url, err)
 			} else {
 				ctx.Qc.Increment()
@@ -193,14 +196,19 @@ func EnqueURL(ctx *Context, url string, breadcrumb string) {
 // MarkVisitedURL allows us to mark a page which has been received as part of a 301 redirect.
 // It prevents us from visiting a page twice (in theory)
 func MarkVisitedURL(ctx *Context, url string, breadcrumb string) {
-	u, err := ctx.Cmd.URL().Parse(url)
-	if err != nil {
-		fmt.Printf("error: resolve URL %s - %s\n", url, err)
-		return
+	mapUrl := url
+	if ctx.Cmd != nil {
+
+		u, err := ctx.Cmd.URL().Parse(url)
+		if err != nil {
+			fmt.Printf("error: resolve URL %s - %s\n", url, err)
+			return
+		}
+		mapUrl = u.String()
 	}
-	_, found := ctx.G.BreadcrumbMap[u.String()]
+	_, found := ctx.G.BreadcrumbMap[mapUrl]
 	if !found {
-		ctx.G.BreadcrumbMap[u.String()] = breadcrumb
+		ctx.G.BreadcrumbMap[mapUrl] = breadcrumb
 	}
 }
 
@@ -242,11 +250,8 @@ func OutputProduct(ctx *Context, name string, sku string, url string, modelURL s
 	partData.URL = url
 	partData.ModelURL = modelURL
 	partData.Section = ctx.G.LastCategory
-	if extra != nil {
-		for i, s := range extra {
-			partData.Extra[i] = s
-		}
-	}
+	copy(partData.Extra[:], extra)
+
 	partData.Order = uint(ctx.G.Linenum)
 	ctx.G.Linenum++
 
@@ -283,7 +288,7 @@ func OutputPartData(ctx *Context, partData *partcatalog.PartData) {
 func OutputError(ctx *Context, message string, args ...interface{}) {
 	fmt.Printf("***"+message, args...)
 	outmsg := fmt.Sprintf("%d`***", ctx.G.Linenum) + message
-	fmt.Fprint(ctx.G.Outfile, fmt.Sprintf(outmsg, args...))
+	fmt.Fprintf(ctx.G.Outfile, outmsg, args...)
 	ctx.G.Linenum++
 }
 

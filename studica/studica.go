@@ -11,21 +11,53 @@ import (
 	"github.com/toebes/ftc_parts_spider/spiderdata"
 )
 
-// StudicaTarget is the configuration structure for spidering theStudica website
+// StudicaTarget is the configuration structure for spidering the Studica website
 var StudicaTarget = spiderdata.SpiderTarget{
 	Outfile:            "studica.txt",
 	SpreadsheetID:      "1xomFgFZ3Ie79XHOMbAX76sSRYDzkkj3VywsakY3DCjA",
 	Presets:            []string{},
 	StripSKU:           false,
-	Seed:               "https://www.studica.com/",
+	Seed:               "https://www.studica.com/sitemap.xml",
 	ParsePageFunc:      ParseStudicaPage,
 	CheckMatchFunc:     CheckStudicaMatch,
 	SectionNameDeletes: []string{},
 	SectionAllowedMap:  map[string]string{},
 	SectionEquivalents: [][]string{},
+	SkipPages: []string{
+		"https://www.studica.com/blog",
+		"https://www.studica.com/search",
+		"https://www.studica.com/studica-resources",
+		"https://www.studica.com/education-webinars-for-teachers",
+		"https://www.studica.com/contactus",
+		"https://www.studica.com/industry",
+		"https://www.studica.com/manufacturer/all",
+		"https://blog.studica.com",
+		"https://www.studica.com/webinars",
+		"https://www.studica.com/contactus",
+		"https://www.studica.com/drones-uav",
+		"https://www.studica.com/classroom",
+		"https://www.studica.com/animation-cad-modeling",
+		"https://www.studica.com/career-tech-education",
+		"https://www.studica.com/coding-learn-to-program",
+		"https://www.studica.com/curriculum-solutions",
+		"https://www.studica.com/engineering-education",
+		"https://www.studica.com/kitting-services",
+		"https://www.studica.com/education-pricing-babbel-for-classroom",
+		"https://www.studica.com/science-education",
+		"https://www.studica.com/stem-programs",
+		"https://www.studica.com/students",
+		"https://www.studica.com/student-software-discounts",
+		"https://www.studica.com/school-affiliates",
+		"https://www.studica.com/industry",
+		"https://www.studica.com/architecture",
+		"https://www.studica.com/automation-controls",
+		"https://www.studica.com/robotics-3",
+		"https://www.studica.com/cnc-machines",
+		"https://www.studica.com/clearance",
+	},
 }
 
-const menuPrefix = "/menus/"
+// const menuPrefix = "/menus/"
 
 // CheckStudicaMatch compares a partData to what has been captured from the spreadsheet
 // Any differences are put into the notes
@@ -177,7 +209,7 @@ func CheckStudicaMatch(ctx *spiderdata.Context, partData *partcatalog.PartData) 
 func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selection) spiderdata.DownloadEntMap {
 	result := spiderdata.DownloadEntMap{}
 	// fmt.Printf("findAllDownloads parent='%v'\n", root.Parent().Text())
-	root.Parent().Find("a.product-documents__link").Each(func(i int, elem *goquery.Selection) {
+	root.Parent().Find("div.full-description a").Each(func(i int, elem *goquery.Selection) {
 		//<a target="_blank" class="product-documents__link" href="https://andymark-weblinc.netdna-ssl.com/media/W1siZiIsIjIwMTgvMTEvMDYvMTUvMDIvMTQvNTMwZjE4YmMtMmM5NS00Yzk3LTg3OWMtZjNmYzI1MTllMzJiL2FtLTMyODQgMzJ0IE5pbmphIFN0YXIgU3Byb2NrZXQuU1RFUCJdXQ/am-3284%2032t%20Ninja%20Star%20Sprocket.STEP?sha=9834a1285a141ddc">am-3284 32t Ninja Star Sprocket.STEP</a>
 		title := strings.TrimSpace(elem.Text())
 		dlurl, foundurl := elem.Attr("href")
@@ -187,6 +219,8 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 			spiderdata.OutputError(ctx, "No Title found for url %s on %s\n", dlurl, url)
 		} else if !foundurl {
 			spiderdata.OutputError(ctx, "No URL found associated with %s on %s\n", title, url)
+		} else if strings.ToUpper(title) == "STEP FILE" || strings.ToUpper(title) == "ONSHAPE MODEL LINK" {
+			result[strings.ToUpper((title))] = spiderdata.DownloadEnt{URL: dlurl, Used: false}
 		} else if strings.HasSuffix(strings.ToUpper(title), ".STEP") ||
 			strings.HasSuffix(strings.ToUpper(title), ".STEP.ZIP") ||
 			strings.HasSuffix(strings.ToUpper(title), ".STP") ||
@@ -210,16 +244,32 @@ func getDownloadURL(_ /*ctx*/ *spiderdata.Context, sku string, downloadurls spid
 	if found {
 		result = ent.URL
 		downloadurls[sku] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
-	} else {
-		// We didn't find the sku in the list, but it is possible that they misnamed it.
-		// For example https://www.servocity.com/8mm-4-barrel  has a SKU of 545314
-		// But the text for the URL is mistyped as '535314' but it links to 'https://www.servocity.com/media/attachment/file/5/4/545314.zip'
-		// So we want to try to use it
-		for key, element := range downloadurls {
-			if !element.Used && strings.Contains(element.URL, sku) {
-				result = element.URL
-				downloadurls[key] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
-			}
+		return
+	}
+
+	ent, found = downloadurls["ONSHAPE MODEL LINK"]
+	if found {
+		result = ent.URL
+		downloadurls[sku] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
+		return
+
+	}
+	ent, found = downloadurls["STEP FILE"]
+	if found {
+		result = ent.URL
+		downloadurls[sku] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
+		return
+
+	}
+
+	// We didn't find the sku in the list, but it is possible that they misnamed it.
+	// For example https://www.servocity.com/8mm-4-barrel  has a SKU of 545314
+	// But the text for the URL is mistyped as '535314' but it links to 'https://www.servocity.com/media/attachment/file/5/4/545314.zip'
+	// So we want to try to use it
+	for key, element := range downloadurls {
+		if !element.Used && strings.Contains(element.URL, sku) {
+			result = element.URL
+			downloadurls[key] = spiderdata.DownloadEnt{URL: ent.URL, Used: true}
 		}
 	}
 	return
@@ -246,32 +296,31 @@ func processProductBrowse(ctx *spiderdata.Context, productname string, _ /*url*/
 	return
 }
 
-func processProductDetail(ctx *spiderdata.Context, productname string, url string, product *goquery.Selection) (found bool) {
+func processProductDetail(ctx *spiderdata.Context, breadcrumbs string, url string, product *goquery.Selection) (found bool) {
 	found = false
 
-	spiderdata.OutputCategory(ctx, productname, true)
+	spiderdata.OutputCategory(ctx, breadcrumbs, true)
 	downloadurls := findAllDownloads(ctx, url, product)
 
-	productData, hasdata := product.Attr("data-analytics")
-	if hasdata {
-		var keys map[string]interface{}
-		json.Unmarshal([]byte(productData), &keys)
-		payload := keys["payload"].(map[string]interface{})
-		name := payload["name"].(string)
-		sku := ""
-		skuelem := payload["sku"]
-		if skuelem != nil {
-			sku = skuelem.(string)
-		} else {
-			skuelem = payload["id"]
-			if skuelem != nil {
-				sku = skuelem.(string)
-			}
-		}
+	localproductname := product.Find("div.product-name").Text()
 
-		spiderdata.OutputProduct(ctx, name, sku, url, getDownloadURL(ctx, sku, downloadurls), false, nil)
+	// See if this has a set of options
+	productVariants := product.Find("div.product-variant-list div.product-variant-line")
+	if productVariants.Length() > 0 {
+		productVariants.Each(func(i int, variant *goquery.Selection) {
+			variantName := variant.Find("div.variant-name").Text()
+			variantSKU := variant.Find("div.manufacturer-part-number span.value").Text()
+			spiderdata.OutputProduct(ctx, localproductname+" - "+variantName, variantSKU, url, getDownloadURL(ctx, variantSKU, downloadurls), false, nil)
+		})
 		found = true
+		return
 	}
+	productForm := product.Find("#product-details-form")
+	productForm.Each(func(i int, formElem *goquery.Selection) {
+		sku := formElem.Find("div.manufacturer-part-number span.value").Text()
+		spiderdata.OutputProduct(ctx, localproductname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, nil)
+		found = true
+	})
 	return
 }
 
@@ -364,7 +413,7 @@ func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selectio
 	fmt.Printf("%v children\n", bc.Children().Length())
 	printHTMLTree(bc, 0)
 	// bc.Find("li[itemprop]").Each(func(i int, li *goquery.Selection) {
-	bc.Find("li").Each(func(i int, li *goquery.Selection) {
+	bc.Find("li[itemprop]").Each(func(i int, li *goquery.Selection) {
 		name := ""
 		url := ""
 		// See if we have an <a> under the section
@@ -381,10 +430,13 @@ func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selectio
 		li.Find("strong[itemprop='name]").Each(func(i int, strong *goquery.Selection) {
 			name = strong.Text()
 		})
-		spiderdata.SaveCategory(ctx, name, "", url)
+		name = strings.TrimSpace(name)
+		spiderdata.SaveCategory(ctx, name, name, url)
 
-		prevresult = result
-		result = spiderdata.MakeBreadCrumb(ctx, result, name)
+		if name != "Studica Robotics" {
+			prevresult = result
+			result = spiderdata.MakeBreadCrumb(ctx, result, name)
+		}
 	})
 	// fmt.Printf("+++Extracted breadcrumb was '%v' lastname='%v' prevresult='%v'\n", result, lastname, prevresult)
 	// Now see if the breadcrumb was Home > Shop All (without the last name)
@@ -399,37 +451,55 @@ func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selectio
 	return result
 }
 
-var skipMenus = map[string]bool{"New & Deals": true, "View All": true, "Gift Card": true}
+// func CacheNav(ctx *spiderdata.Context, nav *goquery.Selection) {
+// 	toplevel := nav.Find("ul.mega-menu-responsive li")
+// 	toplevel.Each(func(i int, li *goquery.Selection) {
+// 		alink := li.Find("a")
+// 		navtitle := ""
+// 		if alink.Length() != 1 {
+// 			fmt.Printf("+++Looking at top level link expected 1 entry found %v\n", alink.Length())
+// 		}
+// 		href, hashref := alink.Attr(("href"))
+// 		if hashref {
+// 			title := alink.Find("span")
+// 			if title.Length() != 1 {
+// 				fmt.Printf("+++Looking at title for '%v' expected 1 link text found %v\n", href, title.Length())
+// 			}
+// 			navtitle = title.Text()
+// 			// We have a title and a URL, so output it and then find the children
+// 			////TEMP		spiderdata.EnqueURL(ctx, href, navtitle)
+// 		}
+// 		_, skipItem := skipMenus[navtitle]
+// 		if skipItem {
+// 			// fmt.Printf("Skipping %v\n", navtitle)
+// 		} else {
+// 			// fmt.Printf("Caching '%v'\n", navtitle)
+// 			if !ctx.G.SingleOnly {
+// 				spiderdata.EnqueURL(ctx, href, navtitle)
+// 			}
+// 		}
+// 	})
+// }
 
-func CacheNav(ctx *spiderdata.Context, nav *goquery.Selection) {
-	toplevel := nav.Find("ul li.primary-nav__item")
-	toplevel.Each(func(i int, l1 *goquery.Selection) {
-		navcontent, hasnavcontent := l1.Attr("data-primary-nav-content")
-		alink := l1.Find("a.primary-nav__link")
-		navtitle := ""
-		if alink.Length() != 1 {
-			fmt.Printf("+++Looking at top level link expected 1 entry found %v\n", alink.Length())
-		}
-		href, hashref := alink.Attr(("href"))
-		if hashref {
-			title := alink.Find("span.primary-nav__link-text")
-			if title.Length() != 1 {
-				fmt.Printf("+++Looking at title for '%v' expected 1 link text found %v\n", href, title.Length())
+func cacheTagLinks(ctx *spiderdata.Context, ptpDiv *goquery.Selection) (found bool) {
+	found = false
+	if !ctx.G.SingleOnly {
+		ptpDiv.Find(".product-title a").Each(func(i int, url *goquery.Selection) {
+			urlhref, hashref := url.Attr("href")
+			if hashref {
+				found = true
+				spiderdata.EnqueURL(ctx, urlhref, "")
 			}
-			navtitle = title.Text()
-			// We have a title and a URL, so output it and then find the children
-			////TEMP		spiderdata.EnqueURL(ctx, href, navtitle)
-		}
-		_, skipItem := skipMenus[navtitle]
-		if skipItem {
-			// fmt.Printf("Skipping %v\n", navtitle)
-		} else {
-			// fmt.Printf("Caching '%v'\n", navtitle)
+		})
+	}
+	return
+}
 
-			if hasnavcontent {
-				ctx.G.BreadcrumbMap[menuPrefix+navcontent] = navtitle
-				spiderdata.EnqueURL(ctx, menuPrefix+navcontent, navtitle)
-			}
+func CacheSiteURLs(ctx *spiderdata.Context, urlset *goquery.Selection) {
+	urllocs := urlset.Find("url loc")
+	urllocs.Each(func(i int, loc *goquery.Selection) {
+		if !ctx.G.SingleOnly {
+			spiderdata.EnqueURL(ctx, loc.Text(), "")
 		}
 	})
 }
@@ -487,35 +557,78 @@ func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
 	url := ctx.Url
 	found := false
-	printHTMLTree(doc.Children(), 0)
-	//	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("div.breadcrumb"))
-	breadcrumbs := getBreadCrumbName(ctx, url, doc.Find("ul[itemtype=`http://schema.org/BreadcrumbList`]"))
 
+	// When debugging the single page case, dump the DOM to make it easier to figure out what we are missing
+	if ctx.G.SingleOnly {
+		printHTMLTree(doc.Children(), 0)
+	}
+	// Find the breadcrumbs so we know the catagory of the product(s)
+	bcloc := doc.Find("ul[itemtype=\"http://schema.org/BreadcrumbList\"]")
+	breadcrumbs := getBreadCrumbName(ctx, url, bcloc)
+
+	// Remember that we have been here so that we can mark it as complete
 	spiderdata.MarkVisitedURL(ctx, url, breadcrumbs)
 
-	// see if this has been discontinued
+	// TODO: see if this has been discontinued
 	// isDiscontinued := (doc.Find("p.discontinued").Length() > 0)
 
-	// fmt.Printf("Breadcrumb:%s\n", breadcrumbs)
-
-	primaryNav := doc.Find("nav.primary-nav")
-	primaryNav.Each(func(i int, nav *goquery.Selection) {
-		CacheNav(ctx, nav)
+	// See if this is the main site map page
+	sitemap := doc.Find("urlset")
+	sitemap.Each(func(i int, urlset *goquery.Selection) {
+		CacheSiteURLs(ctx, urlset)
+		found = true
 	})
 
+	// TODO: See if this is actually needed
+	// // Cache any menu navigation links
+	// primaryNav := doc.Find("div.header-menu")
+	// primaryNav.Each(func(i int, nav *goquery.Selection) {
+	// 	CacheNav(ctx, nav)
+	// })
+
+	// TODO: See if this is needed
+	// if !found {
+	// 	// See if this is a menu navigation page
+	// 	if strings.Contains(url, menuPrefix) {
+	// 		navtitle, foundbc := ctx.G.BreadcrumbMap[url]
+	// 		if !foundbc {
+	// 			navtitle = "XXX-" + url + "-XXX"
+	// 		}
+	// 		l2menus := doc.Find("div.taxonomy-content-block")
+	// 		l2menus.Each(func(i int, nav *goquery.Selection) {
+	// 			CacheNavMenu(ctx, navtitle, nav)
+	// 			found = true
+	// 		})
+	// 	}
+	// }
 	if !found {
-		// See if this is a menu navigation page
-		if strings.Contains(url, menuPrefix) {
-			navtitle, foundbc := ctx.G.BreadcrumbMap[url]
-			if !foundbc {
-				navtitle = "XXX-" + url + "-XXX"
-			}
-			l2menus := doc.Find("div.taxonomy-content-block")
-			l2menus.Each(func(i int, nav *goquery.Selection) {
-				CacheNavMenu(ctx, navtitle, nav)
-				found = true
+		// Enqueue any related products
+		if !ctx.G.SingleOnly {
+			doc.Find("div.related-products-grid a").Each(func(i int, a *goquery.Selection) {
+				url, foundurl := a.Attr("href")
+				if foundurl {
+					spiderdata.EnqueURL(ctx, url, "")
+				}
 			})
 		}
+	}
+
+	if !found {
+		// see if we have a product-tag-page which is just a list of links to other pages
+		ptp := doc.Find("div.product-tag-page")
+		if ptp.Length() > 0 {
+			tagpageEmpty := true
+			ptp.Each(func(i int, ptpDiv *goquery.Selection) {
+				if cacheTagLinks(ctx, ptpDiv) {
+					tagpageEmpty = false
+				}
+			})
+			if tagpageEmpty {
+				spiderdata.OutputError(ctx, "***Product Tag Page Empty: %s\n", url)
+			}
+			found = true
+		}
+
 	}
 
 	if !found {
@@ -537,11 +650,25 @@ func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	}
 
 	if !found {
-		doc.Find("div.product-detail-container").Each(func(i int, product *goquery.Selection) {
+		doc.Find("div.product-details-page").Each(func(i int, product *goquery.Selection) {
 			// fmt.Printf("Found Product Detail Container")
 			if processProductDetail(ctx, breadcrumbs, url, product) {
 				found = true
 			}
+		})
+	}
+
+	if !found {
+		doc.Find("div.category-page").Each(func(i int, category *goquery.Selection) {
+			if !ctx.G.SingleOnly {
+				category.Find("div.product-item .product-title a").Each(func(i int, a *goquery.Selection) {
+					url, foundurl := a.Attr("href")
+					if foundurl {
+						spiderdata.EnqueURL(ctx, url, "")
+					}
+				})
+			}
+			found = true
 		})
 	}
 
