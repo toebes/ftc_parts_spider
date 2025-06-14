@@ -188,10 +188,10 @@ func main() {
 	getHandler := fetchbot.HandlerFunc(
 		func(ctx *fetchbot.Context, res *http.Response, err error) {
 			// Display cookies received for the current URL
-			cookies := client.Jar.Cookies(res.Request.URL)
-			for _, cookie := range cookies {
-				log.Printf("Cookie: %s = %s\n", cookie.Name, cookie.Value)
-			}
+			// cookies := client.Jar.Cookies(res.Request.URL)
+			// for _, cookie := range cookies {
+			// 	log.Printf("Cookie: %s = %s\n", cookie.Name, cookie.Value)
+			// }
 			context.Qc.Decrement()
 			if err != nil {
 				fmt.Printf("[ERR] %s %s - %s\n", ctx.Cmd.Method(), ctx.Cmd.URL(), err)

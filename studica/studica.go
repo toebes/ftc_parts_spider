@@ -16,7 +16,7 @@ var StudicaTarget = spiderdata.SpiderTarget{
 	Outfile:            "studica.txt",
 	SpreadsheetID:      "1xomFgFZ3Ie79XHOMbAX76sSRYDzkkj3VywsakY3DCjA",
 	Presets:            []string{},
-	StripSKU:           false,
+	StripSKU:           true,
 	Seed:               "https://www.studica.com/sitemap.xml",
 	ParsePageFunc:      ParseStudicaPage,
 	CheckMatchFunc:     CheckStudicaMatch,
@@ -24,36 +24,385 @@ var StudicaTarget = spiderdata.SpiderTarget{
 	SectionAllowedMap:  map[string]string{},
 	SectionEquivalents: [][]string{},
 	SkipPages: []string{
-		"https://www.studica.com/blog",
+		"https://www.studica.com/cdn-cgi/l/email-protection",
 		"https://www.studica.com/search",
-		"https://www.studica.com/studica-resources",
-		"https://www.studica.com/education-webinars-for-teachers",
-		"https://www.studica.com/contactus",
-		"https://www.studica.com/industry",
-		"https://www.studica.com/manufacturer/all",
 		"https://blog.studica.com",
-		"https://www.studica.com/webinars",
-		"https://www.studica.com/contactus",
-		"https://www.studica.com/drones-uav",
-		"https://www.studica.com/classroom",
+		"https://www.studica.com/about-us",
+		"https://www.studica.com/academic-verfication",
+		"https://www.studica.com/adobe-non-profit-value-incentive-plan",
 		"https://www.studica.com/animation-cad-modeling",
+		"https://www.studica.com/aps-ft-webinar",
+		"https://www.studica.com/architecture",
+		"https://www.studica.com/arduino",
+		"https://www.studica.com/automation-controls",
+		"https://www.studica.com/avid-2",
+		"https://www.studica.com/avid-sibelius-comparison",
+		"https://www.studica.com/babbel",
+		"https://www.studica.com/blog",
 		"https://www.studica.com/career-tech-education",
+		"https://www.studica.com/classroom",
+		"https://www.studica.com/clearance",
+		"https://www.studica.com/cnc-machines",
 		"https://www.studica.com/coding-learn-to-program",
+		"https://www.studica.com/contactus",
+		"https://www.studica.com/contactus-2",
+		"https://www.studica.com/cookiepolicy",
 		"https://www.studica.com/curriculum-solutions",
-		"https://www.studica.com/engineering-education",
-		"https://www.studica.com/kitting-services",
+		"https://www.studica.com/digilent",
+		"https://www.studica.com/dremel",
+		"https://www.studica.com/drones-uav",
 		"https://www.studica.com/education-pricing-babbel-for-classroom",
+		"https://www.studica.com/education-webinars-for-teachers",
+		"https://www.studica.com/elenco-electronics",
+		"https://www.studica.com/engineering-education",
+		"https://www.studica.com/first-legal-ftc-robot-parts",
+		"https://www.studica.com/fischertechnik",
+		"https://www.studica.com/homepagetext",
+		"https://www.studica.com/ibm-spss-2",
+		"https://www.studica.com/industry",
+		"https://www.studica.com/kitting-services",
+		"https://www.studica.com/lumion-2",
+		"https://www.studica.com/manufacturer/all",
+		"https://www.studica.com/maxon",
+		"https://www.studica.com/national-instruments",
+		"https://www.studica.com/press-releases",
+		"https://www.studica.com/press-release-studica-announces-mystem-board",
+		"https://www.studica.com/privacy-policy",
+		"https://www.studica.com/ptc-for-schools",
+		"https://www.studica.com/robert-mcneel",
+		"https://www.studica.com/robotics-3",
+		"https://www.studica.com/robotics-distributor-program",
+		"https://www.studica.com/school-affiliates",
 		"https://www.studica.com/science-education",
+		"https://www.studica.com/search",
+		"https://www.studica.com/siemens-stem-courses",
+		"https://www.studica.com/smart-farming-challenge-robocup-germany-pr",
 		"https://www.studica.com/stem-programs",
 		"https://www.studica.com/students",
 		"https://www.studica.com/student-software-discounts",
-		"https://www.studica.com/school-affiliates",
-		"https://www.studica.com/industry",
-		"https://www.studica.com/architecture",
-		"https://www.studica.com/automation-controls",
-		"https://www.studica.com/robotics-3",
-		"https://www.studica.com/cnc-machines",
-		"https://www.studica.com/clearance",
+		"https://www.studica.com/studica-news",
+		"https://www.studica.com/studica-resources",
+		"https://www.studica.com/studica-robotics-resources",
+		"https://www.studica.com/studica-robotics-team-discount",
+		"https://www.studica.com/terms-conditions",
+		"https://www.studica.com/v-ray-chaos-for-education",
+		"https://www.studica.com/webinars",
+		"https://www.studica.com/who-can-order",
+		"https://www.studica.com/worldskills-2021-mobile-robotics-competition",
+
+		// These are empty product tag pages
+		"https://www.studica.com/1000mm",
+		"https://www.studica.com/100mm-drive-wheel",
+		"https://www.studica.com/100mm-flex-wheel",
+		"https://www.studica.com/10mm-groove-pulley",
+		"https://www.studica.com/110mm-tire",
+		"https://www.studica.com/128-tooth-gear-2",
+		"https://www.studica.com/135-degree",
+		"https://www.studica.com/135-degree-bracket",
+		"https://www.studica.com/13-tooth-bevel-gear",
+		"https://www.studica.com/144mm",
+		"https://www.studica.com/144mm-flat-bracket",
+		"https://www.studica.com/160mm-channel",
+		"https://www.studica.com/192mm",
+		"https://www.studica.com/192mm-flat-bracket",
+		"https://www.studica.com/192mm-u-channel-2",
+		"https://www.studica.com/1mm-screw-spacer",
+		"https://www.studica.com/20-tooth-timing-belt-pulley",
+		"https://www.studica.com/240mm",
+		"https://www.studica.com/240mm-flat-bracket",
+		"https://www.studica.com/24-tooth-aluminum-sprocket",
+		"https://www.studica.com/25mm-standoff",
+		"https://www.studica.com/26-tooth-bevel-gear",
+		"https://www.studica.com/288mm",
+		"https://www.studica.com/288mm-flat-beam",
+		"https://www.studica.com/288mm-flat-bracket",
+		"https://www.studica.com/288mm-low-profile-u-channel",
+		"https://www.studica.com/288mm-u-channel",
+		"https://www.studica.com/2mm-screw-spacer",
+		"https://www.studica.com/30mm-round-groove-pulley",
+		"https://www.studica.com/30-tooth-bevel-gear",
+		"https://www.studica.com/30-tooth-timing-belt-pulley",
+		"https://www.studica.com/32mm-channel",
+		"https://www.studica.com/32-toorh-gear",
+		"https://www.studica.com/32-tooth-aluminum-sprocket",
+		"https://www.studica.com/336mm",
+		"https://www.studica.com/336mm-flat-bracket",
+		"https://www.studica.com/384mm",
+		"https://www.studica.com/384mm-flat-beam-2",
+		"https://www.studica.com/384mm-flat-bracket",
+		"https://www.studica.com/384mm-low-profile-u-channel-2",
+		"https://www.studica.com/3d-robot-3-axis",
+		"https://www.studica.com/3ds-max",
+		"https://www.studica.com/40mm-round-groove-pulley",
+		"https://www.studica.com/40-tooth-sprocket",
+		"https://www.studica.com/40-tooth-timing-belt-pulley",
+		"https://www.studica.com/42mm-hinge",
+		"https://www.studica.com/42mm-standoff",
+		"https://www.studica.com/432mm-flat-bracket",
+		"https://www.studica.com/48mm-standoff",
+		"https://www.studica.com/48mm-u-channel",
+		"https://www.studica.com/48-tooth-sprocket",
+		"https://www.studica.com/50mm-drive-wheel",
+		"https://www.studica.com/50mm-round-groove-pulley",
+		"https://www.studica.com/52mm-standoff",
+		"https://www.studica.com/5mm-bore-pulley",
+		"https://www.studica.com/5mm-hex-shaft",
+		"https://www.studica.com/5mm-screw-spacer",
+		"https://www.studica.com/5mm-shaft-hub",
+		"https://www.studica.com/60mm-round-groove-pulley",
+		"https://www.studica.com/60-tooth-timing-belt-pulley",
+		"https://www.studica.com/64-tooth-gear",
+		"https://www.studica.com/6mm-10-tooth-pulley",
+		"https://www.studica.com/6mm-35mm-d-shaft",
+		"https://www.studica.com/6mm-432mm-d-shaft",
+		"https://www.studica.com/6mm-70mm-d-shaft",
+		"https://www.studica.com/6mm-96mm-d-shaft",
+		"https://www.studica.com/6mm-d-shaft",
+		"https://www.studica.com/6mm-servo-hub",
+		"https://www.studica.com/6mm-shaft-hub",
+		"https://www.studica.com/75mm-drive-wheel",
+		"https://www.studica.com/80-tooth-timing-belt-pulley",
+		"https://www.studica.com/90-degree",
+		"https://www.studica.com/90-degree-bracket",
+		"https://www.studica.com/96mm-channel",
+		"https://www.studica.com/96mm-flat-beam",
+		"https://www.studica.com/96mm-flat-bracket",
+		"https://www.studica.com/96mm-low-profile-u-channel-2",
+		"https://www.studica.com/96mm-square-beam-2",
+		"https://www.studica.com/96mm-t-slot-extrusion-2",
+		"https://www.studica.com/96mm-u-channel",
+		"https://www.studica.com/accu-set-accu-set-nimh-battery",
+		"https://www.studica.com/analog-module-jst-sh-jst-gh",
+		"https://www.studica.com/architectural-visualization-2",
+		"https://www.studica.com/autocad",
+		"https://www.studica.com/automated-systems",
+		"https://www.studica.com/autonomous-driving-control-technology-analog-sensor-robotics",
+		"https://www.studica.com/ball-bearing-flanged",
+		"https://www.studica.com/base-plate-2",
+		"https://www.studica.com/biohazard",
+		"https://www.studica.com/blackhawk",
+		"https://www.studica.com/bluetooh-remote-control",
+		"https://www.studica.com/box-1000-sorting-components-storage",
+		"https://www.studica.com/bracket-120-degree",
+		"https://www.studica.com/bronze-bushing",
+		"https://www.studica.com/camera",
+		"https://www.studica.com/circuit",
+		"https://www.studica.com/clamping-shaft-hub-2",
+		"https://www.studica.com/class-sets-electrical",
+		"https://www.studica.com/class-sets-gears",
+		"https://www.studica.com/class-sets-optics",
+		"https://www.studica.com/class-sets-solar-energy",
+		"https://www.studica.com/cobra-line-follower",
+		"https://www.studica.com/coding-elementary-motors-sensors",
+		"https://www.studica.com/competition-robots-rgb-sensor-ultrasonic-motors",
+		"https://www.studica.com/control-cylinder",
+		"https://www.studica.com/conveyor-belt-training-model",
+		"https://www.studica.com/creative-box-brackets-plates",
+		"https://www.studica.com/creative-box-mechanics-worm-drive-chain-transmission",
+		"https://www.studica.com/creative-box-storage-container-components-parts",
+		"https://www.studica.com/crimp",
+		"https://www.studica.com/designer-sogtware-animation",
+		"https://www.studica.com/drive-base-kit",
+		"https://www.studica.com/drive-systems",
+		"https://www.studica.com/d-shaft-collar",
+		"https://www.studica.com/dupont-cable",
+		"https://www.studica.com/education-2",
+		"https://www.studica.com/education-bluetooth-motors-remote-control",
+		"https://www.studica.com/eld",
+		"https://www.studica.com/electronic-mounting-plate",
+		"https://www.studica.com/electronics-2",
+		"https://www.studica.com/electronics-simple-circuits-series-parallel-connections",
+		"https://www.studica.com/e-tronic-2",
+		"https://www.studica.com/e-tronic-electronics-circuits",
+		"https://www.studica.com/expansion-board",
+		"https://www.studica.com/extrusion",
+		"https://www.studica.com/factory-simulation-24v-plc-gripper-robot-high-bay-warehouse-multi-processing-sorting-line-color-detection",
+		"https://www.studica.com/factory-simulation-9v-txt-gripper-robot-high-bay-warehouse-multi-processing-sorting-line-color-detection",
+		"https://www.studica.com/first",
+		"https://www.studica.com/flat-beam",
+		"https://www.studica.com/fpv-first-person-view",
+		"https://www.studica.com/frc-3",
+		"https://www.studica.com/front-loader",
+		"https://www.studica.com/ftc-drive-base-kit-2",
+		"https://www.studica.com/ftc-starter-kit-2",
+		"https://www.studica.com/fuel-cells-hydrogen-solar-renewable-energy",
+		"https://www.studica.com/game-controller",
+		"https://www.studica.com/gt2-330mm-timing-belt",
+		"https://www.studica.com/gt2-630mm-timing-belt",
+		"https://www.studica.com/gt2-810mm-timing-belt",
+		"https://www.studica.com/gt2-smooth-idler-pulley",
+		"https://www.studica.com/gt2-timing-belt-clamp",
+		"https://www.studica.com/h2-fuel-cell-hydrogen-renewable-energy",
+		"https://www.studica.com/hdmi-cable",
+		"https://www.studica.com/hex-hub",
+		"https://www.studica.com/hex-key-metric",
+		"https://www.studica.com/high-bay-warehouse-automated",
+		"https://www.studica.com/hinge",
+		"https://www.studica.com/hoists",
+		"https://www.studica.com/hydraulics-control-cylinder-instructional-materials-models",
+		"https://www.studica.com/hydraulics-fundamentals-force-teaching-materials-control-cylinders",
+		"https://www.studica.com/i2c-tjc8-cable",
+		"https://www.studica.com/indexed-line-machining-stations-24v-conveyor-line-plc",
+		"https://www.studica.com/indexed-line-machining-stations-9v-conveyor-line-txt-controller",
+		"https://www.studica.com/inside-l-bracket",
+		"https://www.studica.com/inside-u-bracket",
+		"https://www.studica.com/instructional-materials",
+		"https://www.studica.com/introduction-to-stem-programming-stem-computer-science",
+		"https://www.studica.com/iot-internet-of-things-network-cloud",
+		"https://www.studica.com/junior-collection",
+		"https://www.studica.com/language-development",
+		"https://www.studica.com/l-bracket",
+		"https://www.studica.com/led-lights",
+		"https://www.studica.com/light-weight-shaft-hub-2",
+		"https://www.studica.com/low-profile-channel-pack-2",
+		"https://www.studica.com/low-profile-u-channel-2",
+		"https://www.studica.com/m3-10mm-button-head-cap-screw",
+		"https://www.studica.com/m3-10mm-socket-head-cap-screw",
+		"https://www.studica.com/m3-12mm-socket-head-cap-screw",
+		"https://www.studica.com/m3-20mm-socket-head-cap-screw",
+		"https://www.studica.com/m3-30mm-socket-head-cap-screw",
+		"https://www.studica.com/m3-8mm-socket-head-cap-screw",
+		"https://www.studica.com/m3-kep-nut",
+		"https://www.studica.com/m3-nyloc-nut",
+		"https://www.studica.com/m3-socket-head-cap-screw",
+		"https://www.studica.com/m3-t-slot-nut",
+		"https://www.studica.com/maverick",
+		"https://www.studica.com/maverick-gear-motor",
+		"https://www.studica.com/mechanical",
+		"https://www.studica.com/mechanics-engineering-construction-dynamics-statics-gears-structure",
+		"https://www.studica.com/mechanics-retro-bevel-gear-planetary-gear-scissor-lift",
+		"https://www.studica.com/mechanics-static-technical-construction-set-shaft-drive-planetary-gear",
+		"https://www.studica.com/mh-fc-cable",
+		"https://www.studica.com/microbit-programming-sensors-actuators-instructional-activity",
+		"https://www.studica.com/micro-servo-motor",
+		"https://www.studica.com/mobile-robotics",
+		"https://www.studica.com/motion-2",
+		"https://www.studica.com/motor-driver-sensor-adapter-myrio",
+		"https://www.studica.com/motor-mount-clamp-kit-2",
+		"https://www.studica.com/motor-mount-plate-2",
+		"https://www.studica.com/motor-mount-plate-leaf-2",
+		"https://www.studica.com/motor-sensor-training-kit-myrio",
+		"https://www.studica.com/motor-set-geared-motor-toothed-gears-axles-gearbox-parts",
+		"https://www.studica.com/multi-mode",
+		"https://www.studica.com/multi-processing-station-oven-24v-pneumatic-gripper-conveyor-plc",
+		"https://www.studica.com/multi-processing-station-oven-9v-pneumatic-gripper-conveyor-txt-controller",
+		"https://www.studica.com/mxp",
+		"https://www.studica.com/mxp-extender-cable",
+		"https://www.studica.com/mxp-extender-cable-2",
+		"https://www.studica.com/mydev-protoboard",
+		"https://www.studica.com/nimh-battery-pack",
+		"https://www.studica.com/nimh-battery-pack-charger",
+		"https://www.studica.com/omni-wheels-robotics-object-recognition",
+		"https://www.studica.com/parallel-connections",
+		"https://www.studica.com/phillips-hex-screwdriver",
+		"https://www.studica.com/physics",
+		"https://www.studica.com/pneumatics-valves-cylinders-excavator-parts",
+		"https://www.studica.com/pneumatics-valves-cylinders-tree-grabber-front-loader",
+		"https://www.studica.com/power-control-panel-2",
+		"https://www.studica.com/powerpole-cable",
+		"https://www.studica.com/powerpole-crimp-tool",
+		"https://www.studica.com/power-set-plug-in-class-2-transformer",
+		"https://www.studica.com/power-switch-plate-2",
+		"https://www.studica.com/punching-machine-conveyor-belt-24v-plc-training-model",
+		"https://www.studica.com/punching-machine-conveyor-belt-9v-txt-controller-training-model",
+		"https://www.studica.com/pwm-cable",
+		"https://www.studica.com/raspberry-pi-2",
+		"https://www.studica.com/reen-energy-renewable-energy-solar",
+		"https://www.studica.com/rhino",
+		"https://www.studica.com/rhino-for-schools",
+		"https://www.studica.com/rhino-upgrade",
+		"https://www.studica.com/robo-pro-software",
+		"https://www.studica.com/robo-pro-software-programming-coding",
+		"https://www.studica.com/robot",
+		"https://www.studica.com/robot-base-plate",
+		"https://www.studica.com/robotics-beginner-bluetooth",
+		"https://www.studica.com/robotics-industry-3-axis-grappler-activity-booklet-programming",
+		"https://www.studica.com/robotics-sensor-motor-training",
+		"https://www.studica.com/robotics-toolbox-2",
+		"https://www.studica.com/robotics-txt-controller",
+		"https://www.studica.com/series",
+		"https://www.studica.com/servo-mount-flat-plate-2",
+		"https://www.studica.com/servo-mount-offset-plate-2",
+		"https://www.studica.com/shanghai",
+		"https://www.studica.com/shock-absorber-110mm",
+		"https://www.studica.com/shock-absorber-55mm",
+		"https://www.studica.com/simple-circuits",
+		"https://www.studica.com/simple-machines-2",
+		"https://www.studica.com/simple-machines-mechanical-pulleys-hoists-gears-statics",
+		"https://www.studica.com/small-thrust-ball-bearing",
+		"https://www.studica.com/smart-robot",
+		"https://www.studica.com/smart-robot-servo-programmer-3",
+		"https://www.studica.com/smart-servo-multi-mode",
+		"https://www.studica.com/smart-servo-programmer",
+		"https://www.studica.com/socket-head",
+		"https://www.studica.com/software-4",
+		"https://www.studica.com/solar-power-renewable-energy-construction-set-instructional-activity",
+		"https://www.studica.com/sorting-line-color-detection-24v-conveyor-plc",
+		"https://www.studica.com/sorting-line-color-detection-9v-conveyor-txt-controller",
+		"https://www.studica.com/sprocket-25-chain",
+		"https://www.studica.com/spss-student-amos-grad-pack",
+		"https://www.studica.com/spss-student-amos-grad-pack-v28",
+		"https://www.studica.com/spss-student-faculty-pack",
+		"https://www.studica.com/spss-student-faculty-pack-v28",
+		"https://www.studica.com/spss-student-grad-pack-v28-base",
+		"https://www.studica.com/spss-student-grad-pack-v28-premium",
+		"https://www.studica.com/spss-student-grad-pack-v28-standard",
+		"https://www.studica.com/spss-v29",
+		"https://www.studica.com/square-beam-2",
+		"https://www.studica.com/sreb-middle-school",
+		"https://www.studica.com/starter-kit",
+		"https://www.studica.com/starter-robot-kit",
+		"https://www.studica.com/stem-electroncis-circuits-resistors-motors-teaching-material",
+		"https://www.studica.com/stem-engineering-robotics-coding-automated-systems",
+		"https://www.studica.com/stem-gears-lever-ratios-pulleys",
+		"https://www.studica.com/stem-pneumatics-compressors-valves-cylinders",
+		"https://www.studica.com/stem-prep",
+		"https://www.studica.com/stem-prep-drive-systems-mechanics-physics-electronics-optics",
+		"https://www.studica.com/stem-renewable-energies-power-solar-fuel-cell",
+		"https://www.studica.com/storage-container",
+		"https://www.studica.com/storage-travel-case",
+		"https://www.studica.com/super-zoom",
+		"https://www.studica.com/super-zoom-microscope",
+		"https://www.studica.com/tamiya-femail-adapter-cable",
+		"https://www.studica.com/t-bracket",
+		"https://www.studica.com/terrain-pack",
+		"https://www.studica.com/titan-quad-motor-controller-2",
+		"https://www.studica.com/tool",
+		"https://www.studica.com/training-bot",
+		"https://www.studica.com/training-factory-industry-40-24v-plc-simulation-gripper-multi-processing-station-sorting-line-color-detection",
+		"https://www.studica.com/training-factory-industry-40-9v-txt-controller-simulation-gripper-multi-processing-station-sorting-line-color-detection",
+		"https://www.studica.com/training-factory-industry-40-plc-modular-training-simulation-research-teaching-production-process",
+		"https://www.studica.com/training-kit",
+		"https://www.studica.com/t-slot",
+		"https://www.studica.com/t-slot-extrusion",
+		"https://www.studica.com/txt-controller-coding-encoder-motor-ultrasonic-sensor-track-sensor",
+		"https://www.studica.com/txt-control-unit-robotics-bluetooth-wifi-coding",
+		"https://www.studica.com/u-channel-2",
+		"https://www.studica.com/u-channel-3",
+		"https://www.studica.com/ultrasonic-distance-sensor-2",
+		"https://www.studica.com/ultrasonic-distance-sensor-bracket-2",
+		"https://www.studica.com/unity-2",
+		"https://www.studica.com/urethane-belt-joining",
+		"https://www.studica.com/urethane-round-belt",
+		"https://www.studica.com/usb-cable",
+		"https://www.studica.com/vacuum-gripper-robot-24v-plc-3-axis-txt-controller-training-model",
+		"https://www.studica.com/vacuum-gripper-robot-9v-3-axis-txt-controller-training-model",
+		"https://www.studica.com/vectorworks",
+		"https://www.studica.com/vision",
+		"https://www.studica.com/vmx-cable",
+		"https://www.studica.com/vmx-cable-pack",
+		"https://www.studica.com/vmx-frc-training-bot",
+		"https://www.studica.com/vmx-jst-breakout-board",
+		"https://www.studica.com/vmx-robotics-controller",
+		"https://www.studica.com/vmx-titan-upgrade-kit",
+		"https://www.studica.com/vmx-vision-motion-frc-ftc",
+		"https://www.studica.com/vmx-wallwart-cable",
+		"https://www.studica.com/wheel",
+		"https://www.studica.com/wire-pack",
+		"https://www.studica.com/worldskills-2",
+		"https://www.studica.com/worldskills-mobile-robotics-shanghai",
+		"https://www.studica.com/worldskills-mobile-robotics-vmx-titan",
+		"https://www.studica.com/x-bracket",
 	},
 }
 
@@ -214,8 +563,9 @@ func findAllDownloads(ctx *spiderdata.Context, url string, root *goquery.Selecti
 		title := strings.TrimSpace(elem.Text())
 		dlurl, foundurl := elem.Attr("href")
 		fmt.Printf("Found a on '%v' href=%v\n", elem.Text(), dlurl)
-
-		if title == "" {
+		if strings.HasSuffix(strings.ToUpper(dlurl), ".JPG") {
+			// We are going to ignore JPG files
+		} else if title == "" {
 			spiderdata.OutputError(ctx, "No Title found for url %s on %s\n", dlurl, url)
 		} else if !foundurl {
 			spiderdata.OutputError(ctx, "No URL found associated with %s on %s\n", title, url)
@@ -409,77 +759,25 @@ func printHTMLTree(selection *goquery.Selection, indent int) {
 // the category since their website seems to put a unique category for each
 func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selection) string {
 	result := ""
-	prevresult := ""
-	fmt.Printf("%v children\n", bc.Children().Length())
-	printHTMLTree(bc, 0)
-	// bc.Find("li[itemprop]").Each(func(i int, li *goquery.Selection) {
+
 	bc.Find("li[itemprop]").Each(func(i int, li *goquery.Selection) {
 		name := ""
-		url := ""
 		// See if we have an <a> under the section
 		li.Find("a[itemprop='item']").Each(func(i int, a *goquery.Selection) {
 			name = a.Text()
-			urlloc, hasurl := a.Attr("href")
-			if hasurl {
-				url = urlloc
-			}
 		})
-		li.Find("span[itemprop='name]").Each(func(i int, span *goquery.Selection) {
+		li.Find("[itemprop='name']").Each(func(i int, span *goquery.Selection) {
 			name = span.Text()
 		})
-		li.Find("strong[itemprop='name]").Each(func(i int, strong *goquery.Selection) {
-			name = strong.Text()
-		})
 		name = strings.TrimSpace(name)
-		spiderdata.SaveCategory(ctx, name, name, url)
 
+		// Don't bother gathering the Studica Robotics at the top
 		if name != "Studica Robotics" {
-			prevresult = result
 			result = spiderdata.MakeBreadCrumb(ctx, result, name)
 		}
 	})
-	// fmt.Printf("+++Extracted breadcrumb was '%v' lastname='%v' prevresult='%v'\n", result, lastname, prevresult)
-	// Now see if the breadcrumb was Home > Shop All (without the last name)
-	if strings.EqualFold(prevresult, "Home > Shop All") {
-		// It was, so we need to extract the proper name
-		savename, found := ctx.G.BreadcrumbMap[url]
-		// fmt.Printf("+++Checking savename='%v' found=%v for url='%v'\n", savename, found, url)
-		if found {
-			result = savename
-		}
-	}
 	return result
 }
-
-// func CacheNav(ctx *spiderdata.Context, nav *goquery.Selection) {
-// 	toplevel := nav.Find("ul.mega-menu-responsive li")
-// 	toplevel.Each(func(i int, li *goquery.Selection) {
-// 		alink := li.Find("a")
-// 		navtitle := ""
-// 		if alink.Length() != 1 {
-// 			fmt.Printf("+++Looking at top level link expected 1 entry found %v\n", alink.Length())
-// 		}
-// 		href, hashref := alink.Attr(("href"))
-// 		if hashref {
-// 			title := alink.Find("span")
-// 			if title.Length() != 1 {
-// 				fmt.Printf("+++Looking at title for '%v' expected 1 link text found %v\n", href, title.Length())
-// 			}
-// 			navtitle = title.Text()
-// 			// We have a title and a URL, so output it and then find the children
-// 			////TEMP		spiderdata.EnqueURL(ctx, href, navtitle)
-// 		}
-// 		_, skipItem := skipMenus[navtitle]
-// 		if skipItem {
-// 			// fmt.Printf("Skipping %v\n", navtitle)
-// 		} else {
-// 			// fmt.Printf("Caching '%v'\n", navtitle)
-// 			if !ctx.G.SingleOnly {
-// 				spiderdata.EnqueURL(ctx, href, navtitle)
-// 			}
-// 		}
-// 	})
-// }
 
 func cacheTagLinks(ctx *spiderdata.Context, ptpDiv *goquery.Selection) (found bool) {
 	found = false
@@ -607,7 +905,12 @@ func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 			doc.Find("div.related-products-grid a").Each(func(i int, a *goquery.Selection) {
 				url, foundurl := a.Attr("href")
 				if foundurl {
-					spiderdata.EnqueURL(ctx, url, "")
+					if strings.HasSuffix(strings.ToUpper(url), ".STP") ||
+						strings.Contains(strings.ToUpper(url), "CAD.ONSHAPE.COM") {
+						// We just want to ignore them
+					} else {
+						spiderdata.EnqueURL(ctx, url, "")
+					}
 				}
 			})
 		}
@@ -669,22 +972,6 @@ func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 				})
 			}
 			found = true
-		})
-	}
-
-	if !found {
-		doc.Find("a.category-summary-content-block__content").Each(func(i int, a *goquery.Selection) {
-			url, foundurl := a.Attr("href")
-			if foundurl {
-				// Now we need to compute better breadcrumbs for the link
-				a.Find("span.category-summary-content-block__heading").Each(func(i int, catname *goquery.Selection) {
-					catcrumb := spiderdata.MakeBreadCrumb(ctx, breadcrumbs, catname.Text())
-					if !ctx.G.SingleOnly {
-						spiderdata.EnqueURL(ctx, url, catcrumb)
-					}
-					found = true
-				})
-			}
 		})
 	}
 

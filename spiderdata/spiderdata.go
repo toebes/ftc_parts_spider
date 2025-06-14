@@ -157,6 +157,13 @@ func CleanURL(ctx *Context, url string) (result string, stripped bool) {
 			url = url[:pos]
 			stripped = true
 		}
+		// Trim off any #xxxx on the URL
+		pos = strings.Index(url, "#")
+		if pos > 0 { // note > and not >= because we don't want to get an empty URL
+			// Trim off any #xxx parameters
+			url = url[:pos]
+			stripped = true
+		}
 	}
 	result = url
 	return
@@ -166,7 +173,7 @@ func CleanURL(ctx *Context, url string) (result string, stripped bool) {
 func EnqueURL(ctx *Context, url string, breadcrumb string) {
 	if url != "" {
 		// Resolve address
-		fmt.Printf("+++Enqueue:%s for '%v'\n", url, breadcrumb)
+		// fmt.Printf("+++Enqueue:%s for '%v'\n", url, breadcrumb)
 		if ctx.Cmd != nil {
 			u, err := ctx.Cmd.URL().Parse(url)
 			if err != nil {
@@ -179,6 +186,7 @@ func EnqueURL(ctx *Context, url string, breadcrumb string) {
 		urlString, _ := CleanURL(ctx, url)
 		prevbreadcrumb, found := ctx.G.BreadcrumbMap[urlString]
 		if !found {
+			fmt.Printf("+++Enqueue:%s for '%v'\n", url, breadcrumb)
 			if _, err := ctx.Q.SendStringGet(urlString); err != nil {
 				// if _, err := ctx.Q.SendStringHead(urlString); err != nil {
 				fmt.Printf("error: enqueue head %s - %s\n", url, err)
