@@ -31,23 +31,26 @@ func getClient(config *oauth2.Config) *http.Client {
 	return config.Client(context.Background(), tok)
 }
 
-// Request a token from the web, then returns the retrieved token.
 func getTokenFromWeb(config *oauth2.Config) (*oauth2.Token, error) {
 	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	fmt.Printf("Go to the following link in your browser then type the "+
-		"authorization code: \n%v\n", authURL)
+	fmt.Println("────────────────────────────────────────────────────────")
+	fmt.Println("🔐 To authorize access to Google Sheets:")
+	fmt.Println("1. Open the following URL in your browser:")
+	fmt.Printf("\n  %s\n\n", authURL)
+	fmt.Println("2. After allowing access, you’ll be redirected to a URL like:")
+	fmt.Println("     http://localhost/?code=XYZ&scope=...")
+	fmt.Println("3. Copy the **code** parameter from that URL (everything between the code= and &scope=) paste it below.")
+	fmt.Println("────────────────────────────────────────────────────────")
 
+	fmt.Print("Enter the authorization code: ")
 	var authCode string
-
 	if _, err := fmt.Scan(&authCode); err != nil {
-		fmt.Println("visit https://developers.google.com/sheets/api/quickstart/go")
-		return nil, fmt.Errorf("unable to read authorization code. Caused by: %v", err)
+		return nil, fmt.Errorf("unable to read authorization code: %v", err)
 	}
-	// authCode = ""
 
 	tok, err := config.Exchange(context.TODO(), authCode)
 	if err != nil {
-		return nil, fmt.Errorf("unable to retrieve token from web. Caused by %v", err)
+		return nil, fmt.Errorf("unable to retrieve token from web. Caused by: %v", err)
 	}
 	return tok, nil
 }
