@@ -150,6 +150,11 @@ func MakeBreadCrumb(ctx *Context, base string, toadd string) (result string) {
 func CleanURL(ctx *Context, url string) (result string, stripped bool) {
 	stripped = false
 	if ctx.G.StripSKU {
+		trimmed := strings.TrimSpace(url)
+		if trimmed != url {
+			stripped = true
+			url = trimmed
+		}
 		// Trim off any ?sku= on the URL
 		pos := strings.Index(url, "?")
 		if pos > 0 { // note > and not >= because we don't want to get an empty URL
@@ -201,6 +206,22 @@ func EnqueURL(ctx *Context, url string, breadcrumb string) {
 	}
 }
 
+// WasVisitedURL allows us to check to see if we previously had seen a page.
+func WasVisitedURL(ctx *Context, url string) (visited bool) {
+	mapUrl := url
+	if ctx.Cmd != nil {
+
+		u, err := ctx.Cmd.URL().Parse(url)
+		if err != nil {
+			fmt.Printf("error: resolve URL %s - %s\n", url, err)
+			return
+		}
+		mapUrl = u.String()
+	}
+	_, visited = ctx.G.BreadcrumbMap[mapUrl]
+	return
+}
+
 // MarkVisitedURL allows us to mark a page which has been received as part of a 301 redirect.
 // It prevents us from visiting a page twice (in theory)
 func MarkVisitedURL(ctx *Context, url string, breadcrumb string) {
@@ -241,6 +262,8 @@ func OutputCategory(ctx *Context, breadcrumbs string, trimlast bool) {
 		offset := strings.LastIndex(category, " > ")
 		if offset != -1 {
 			category = string(category[0:offset])
+		} else {
+			category = ""
 		}
 	}
 	if category != ctx.G.LastCategory {

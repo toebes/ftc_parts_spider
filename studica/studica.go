@@ -1,7 +1,6 @@
 package studica
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -57,6 +56,8 @@ var StudicaTarget = spiderdata.SpiderTarget{
 		"https://www.studica.com/engineering-education",
 		"https://www.studica.com/first-legal-ftc-robot-parts",
 		"https://www.studica.com/fischertechnik",
+		"https://www.studica.com/fischertechnik-2",
+		"https://www.studica.com/ft-stem-prep-engineering",
 		"https://www.studica.com/homepagetext",
 		"https://www.studica.com/ibm-spss-2",
 		"https://www.studica.com/industry",
@@ -64,6 +65,7 @@ var StudicaTarget = spiderdata.SpiderTarget{
 		"https://www.studica.com/lumion-2",
 		"https://www.studica.com/manufacturer/all",
 		"https://www.studica.com/maxon",
+		"https://www.studica.com/maxon-2",
 		"https://www.studica.com/national-instruments",
 		"https://www.studica.com/press-releases",
 		"https://www.studica.com/press-release-studica-announces-mystem-board",
@@ -89,6 +91,23 @@ var StudicaTarget = spiderdata.SpiderTarget{
 		"https://www.studica.com/webinars",
 		"https://www.studica.com/who-can-order",
 		"https://www.studica.com/worldskills-2021-mobile-robotics-competition",
+
+		// These are duplicates of other products
+		"https://www.studica.com/studica-robotics-brand/432mm-u-channel-black",
+		"https://www.studica.com/studica-robotics-brand/432mm-u-channel-clear",
+		"https://www.studica.com/studica-robotics-brand/432mm-u-channel-gold",
+		"https://www.studica.com/studica-robotics-brand/432mm-u-channel-green",
+		"https://www.studica.com/studica-robotics-brand/432mm-u-channel-red",
+		"https://www.studica.com/studica-robotics-brand/432mm-u-channel-blue",
+		"https://www.studica.com/studica-robotics-brand/384mm-u-channel-red",
+		"https://www.studica.com/studica-robotics-brand/288mm-x-40mm-flat-bracket-black",
+		"https://www.studica.com/studica-robotics-brand/288mm-x-40mm-flat-bracket-silver",
+		"https://www.studica.com/studica-robotics-brand/288mm-x-40mm-flat-bracket-gold",
+		"https://www.studica.com/studica-robotics-brand/288mm-x-40mm-flat-bracket-green",
+		"https://www.studica.com/studica-robotics-brand/288mm-x-40mm-flat-bracket-red",
+		"https://www.studica.com/studica-robotics-brand/288mm-x-40mm-flat-bracket-blue",
+		"https://www.studica.com/studica-robotics-brand/288mm-x-40mm-flat-bracket-blue-2",
+		"https://www.studica.com/36190-air-reservoir-2-2",
 
 		// These are empty product tag pages
 		"https://www.studica.com/1000mm",
@@ -625,27 +644,6 @@ func getDownloadURL(_ /*ctx*/ *spiderdata.Context, sku string, downloadurls spid
 	return
 }
 
-func processProductBrowse(ctx *spiderdata.Context, productname string, _ /*url*/ string, product *goquery.Selection) (found bool) {
-	found = false
-	spiderdata.OutputCategory(ctx, productname, true)
-	product.Find("div.product-summary a.product-summary__media-link").Each(func(i int, linked *goquery.Selection) {
-		impression, hassimpression := linked.Attr("data-analytics-product-impression")
-		itemurl, hasurl := linked.Attr("href")
-		if hassimpression && hasurl {
-			var keys map[string]interface{}
-			json.Unmarshal([]byte(impression), &keys)
-			name := keys["name"]
-			sku := keys["sku"]
-			fmt.Printf(" Browse: name '%v' sku '%v' url '%v'\n", name, sku, itemurl)
-			if !ctx.G.SingleOnly {
-				spiderdata.EnqueURL(ctx, itemurl, productname)
-			}
-			found = true
-		}
-	})
-	return
-}
-
 func processProductDetail(ctx *spiderdata.Context, breadcrumbs string, url string, product *goquery.Selection) (found bool) {
 	found = false
 
@@ -671,33 +669,6 @@ func processProductDetail(ctx *spiderdata.Context, breadcrumbs string, url strin
 		spiderdata.OutputProduct(ctx, localproductname, sku, url, getDownloadURL(ctx, sku, downloadurls), false, nil)
 		found = true
 	})
-	return
-}
-
-func processProductSelection(ctx *spiderdata.Context, productname string, url string, product *goquery.Selection) (found bool) {
-	found = false
-	spiderdata.OutputCategory(ctx, productname, true)
-	localname := product.Find("h1.product-details__heading").Text()
-	// fmt.Printf("ProcessProductSelection\n")
-	changeset := product.Find("div.select-menu select")
-
-	downloadurls := findAllDownloads(ctx, url, product)
-	if changeset.Children().Length() > 0 {
-		changeset.Find("option").Each(func(i int, option *goquery.Selection) {
-			value, hasval := option.Attr("value")
-			if hasval {
-				/// The value generally is of the form:  descr (sku)
-				// So we want to split on the left paren
-				pos := strings.Index(value, " (")
-				if pos >= 0 {
-					namepart := value[:pos-1]
-					sku := value[pos+2 : len(value)-1]
-					spiderdata.OutputProduct(ctx, localname+" "+namepart, sku, url, getDownloadURL(ctx, sku, downloadurls), false, nil)
-					found = true
-				}
-			}
-		})
-	}
 	return
 }
 
@@ -757,7 +728,7 @@ func printHTMLTree(selection *goquery.Selection, indent int) {
 //
 // What we want to get is the name (the sections in the <a> or the <strong>) while building up a database of matches to
 // the category since their website seems to put a unique category for each
-func getBreadCrumbName(ctx *spiderdata.Context, url string, bc *goquery.Selection) string {
+func getBreadCrumbName(ctx *spiderdata.Context, bc *goquery.Selection) string {
 	result := ""
 
 	bc.Find("li[itemprop]").Each(func(i int, li *goquery.Selection) {
@@ -853,6 +824,7 @@ func CacheNavMenu(ctx *spiderdata.Context, navtitle string, l2menu *goquery.Sele
 // ParseStudicaPage parses a page and adds links to elements found within by the various processors
 func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	ctx.G.Mu.Lock()
+	defer ctx.G.Mu.Unlock()
 	url := ctx.Url
 	found := false
 
@@ -862,7 +834,7 @@ func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 	}
 	// Find the breadcrumbs so we know the catagory of the product(s)
 	bcloc := doc.Find("ul[itemtype=\"http://schema.org/BreadcrumbList\"]")
-	breadcrumbs := getBreadCrumbName(ctx, url, bcloc)
+	breadcrumbs := getBreadCrumbName(ctx, bcloc)
 
 	// Remember that we have been here so that we can mark it as complete
 	spiderdata.MarkVisitedURL(ctx, url, breadcrumbs)
@@ -877,28 +849,6 @@ func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 		found = true
 	})
 
-	// TODO: See if this is actually needed
-	// // Cache any menu navigation links
-	// primaryNav := doc.Find("div.header-menu")
-	// primaryNav.Each(func(i int, nav *goquery.Selection) {
-	// 	CacheNav(ctx, nav)
-	// })
-
-	// TODO: See if this is needed
-	// if !found {
-	// 	// See if this is a menu navigation page
-	// 	if strings.Contains(url, menuPrefix) {
-	// 		navtitle, foundbc := ctx.G.BreadcrumbMap[url]
-	// 		if !foundbc {
-	// 			navtitle = "XXX-" + url + "-XXX"
-	// 		}
-	// 		l2menus := doc.Find("div.taxonomy-content-block")
-	// 		l2menus.Each(func(i int, nav *goquery.Selection) {
-	// 			CacheNavMenu(ctx, navtitle, nav)
-	// 			found = true
-	// 		})
-	// 	}
-	// }
 	if !found {
 		// Enqueue any related products
 		if !ctx.G.SingleOnly {
@@ -932,24 +882,6 @@ func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 			found = true
 		}
 
-	}
-
-	if !found {
-		doc.Find("div.product-details--option_selects").Each(func(i int, productselect *goquery.Selection) {
-			// fmt.Printf("Found Product Details Selection\n")
-			if processProductSelection(ctx, breadcrumbs, url, productselect) {
-				found = true
-			}
-		})
-	}
-
-	if !found {
-		doc.Find("div.product-browse").Each(func(i int, productbrowse *goquery.Selection) {
-			// fmt.Printf("Found Product Browse\n")
-			if processProductBrowse(ctx, breadcrumbs, url, productbrowse) {
-				found = true
-			}
-		})
 	}
 
 	if !found {
@@ -992,5 +924,4 @@ func ParseStudicaPage(ctx *spiderdata.Context, doc *goquery.Document) {
 			spiderdata.OutputError(ctx, "Unable to process: %s\n", url)
 		}
 	}
-	ctx.G.Mu.Unlock()
 }

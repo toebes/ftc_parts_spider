@@ -208,10 +208,18 @@ func main() {
 					return
 				}
 				url := res.Request.URL.String()
+				wasseen := false
+				original := ctx.Cmd.URL().String()
+				if url != original {
+					// We got a redirect.  See if the finalURL was also on the list
+					_, wasseen = context.G.BreadcrumbMap[url]
+				}
 
 				muxcontext := spiderdata.Context{Cmd: ctx.Cmd, Q: ctx.Q, G: context.G, Url: url, Qc: context.Qc}
 				// Enqueue all links as HEAD requests
-				context.G.TargetConfig.ParsePageFunc(&muxcontext, doc)
+				if !wasseen {
+					context.G.TargetConfig.ParsePageFunc(&muxcontext, doc)
+				}
 				// See how many are remaining
 				remain := context.Qc.GetPendingCount()
 				fmt.Printf("#### After Processing %v remain\n", remain)
